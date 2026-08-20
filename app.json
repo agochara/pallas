@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "LogFit",
+    "slug": "logfit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.n.logfit",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5fb238ee-a9eb-4436-b55c-f4d4d5b5406b"
+      }
+    }
+  }
+}
