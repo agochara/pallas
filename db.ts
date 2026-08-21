@@ -1,6 +1,11 @@
 import * as SQLite from 'expo-sqlite';
 
-export type Exercise = 'Squat' | 'Bench Press' | 'Deadlift' | 'Clean & Press';
+export type Exercise =
+  | 'Squat'
+  | 'Bench Press'
+  | 'Deadlift'
+  | 'Clean & Press';
+
 export const EXERCISES: Exercise[] = [
   'Squat',
   'Bench Press',
@@ -9,11 +14,9 @@ export const EXERCISES: Exercise[] = [
 ];
 
 export type LiftRecord = {
-  id: number;
   exercise: Exercise;
   weight: number;
   reps: number;
-  recorded_at: string;
 };
 
 export type Fast = {
@@ -30,12 +33,10 @@ export async function initDatabase(): Promise<void> {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
 
-    CREATE TABLE IF NOT EXISTS lift_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      exercise TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS max_lifts (
+      exercise TEXT PRIMARY KEY,
       weight REAL NOT NULL,
-      reps INTEGER NOT NULL,
-      recorded_at TEXT NOT NULL
+      reps INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS fasts (
@@ -57,64 +58,30 @@ export async function insertLift(
   exercise: Exercise,
   weight: number,
   reps: number,
-  recordedAt: string
 ): Promise<void> {
+  const current = await getMaxLift(exercise);
+
+  if (
+    current &&
+    (weight < current.weight ||
+      (weight === current.weight && reps <= current.reps))
+  ) {
+    return;
+  }
+
   await getDb().runAsync(
-    `INSERT INTO lift_records
-      (exercise, weight, reps, recorded_at)
-     VALUES (?, ?, ?, ?)`,
-    [exercise, weight, reps, recordedAt]
+    `INSERT OR REPLACE INTO max_lifts
+      (exercise, weight, reps)
+     VALUES (?, ?, ?)`,
+    [exercise, weight, reps]
   );
-}
-
-export async function getLatestLift(
-  exercise: Exercise
-): Promise<LiftRecord | null> {
-  const rows = await getDb().getAllAsync<LiftRecord>(
-    `SELECT * FROM lift_records
-     WHERE exercise = ?
-     ORDER BY recorded_at DESC, id DESC
-     LIMIT 1`,
-    [exercise]
-  );
-
-  return rows.length > 0 ? rows[0] : null;
 }
 
 export async function getMaxLift(
   exercise: Exercise
 ): Promise<LiftRecord | null> {
-  const rows = await getDb().getAllAsync<LiftRecord>(
-    `SELECT * FROM lift_records
-     WHERE exercise = ?
-     ORDER BY weight DESC, recorded_at DESC, id DESC
-     LIMIT 1`,
-    [exercise]
-  );
-
-  return rows.length > 0 ? rows[0] : null;
-}
-
-export async function getAllLatestLifts(): Promise<
-  Record<Exercise, LiftRecord | null>
-> {
-  const entries = await Promise.all(
-    EXERCISES.map(async (ex) => [ex, await getLatestLift(ex)] as const)
-  );
-
-  return Object.fromEntries(entries) as Record<
-    Exercise,
-    LiftRecord | null
-  >;
-}
-
-export async function getLiftHistory(
-  exercise: Exercise
-): Promise<LiftRecord[]> {
-  return getDb().getAllAsync<LiftRecord>(
-    `SELECT * FROM lift_records
-     WHERE exercise = ?
-     ORDER BY recorded_at ASC, id ASC`,
+  return getDb().getFirstAsync<LiftRecord>(
+    `SELECT * FROM max_lifts WHERE exercise = ?`,
     [exercise]
   );
 }
@@ -163,6 +130,25 @@ export async function insertManualFast(
   );
 }
 
+// Edit an existing fast's start/end time (used for correcting mistakes).
+export async function updateFast(
+  id: number,
+  startTime: string,
+  endTime: string | null
+): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE fasts
+     SET start_time = ?, end_time = ?
+     WHERE id = ?`,
+    [startTime, endTime, id]
+  );
+}
+
+// Permanently remove a single fast entry.
+export async function deleteFast(id: number): Promise<void> {
+  await getDb().runAsync(`DELETE FROM fasts WHERE id = ?`, [id]);
+}
+
 export async function getFastHistory(): Promise<Fast[]> {
   return getDb().getAllAsync<Fast>(
     `SELECT * FROM fasts
@@ -171,50 +157,12 @@ export async function getFastHistory(): Promise<Fast[]> {
   );
 }
 
-// ---------- Unified history ----------
-
-export type HistoryItem =
-  | { type: 'lift'; date: string; lift: LiftRecord }
-  | { type: 'fast'; date: string; fast: Fast };
-
-export async function getUnifiedHistory(): Promise<HistoryItem[]> {
-  const lifts = await getDb().getAllAsync<LiftRecord>(
-    `SELECT * FROM lift_records
-     ORDER BY recorded_at DESC`
-  );
-
-  const fasts = await getDb().getAllAsync<Fast>(
-    `SELECT * FROM fasts
-     WHERE end_time IS NOT NULL
-     ORDER BY start_time DESC`
-  );
-
-  const items: HistoryItem[] = [
-    ...lifts.map((lift): HistoryItem => ({
-      type: 'lift',
-      date: lift.recorded_at,
-      lift,
-    })),
-    ...fasts.map((fast): HistoryItem => ({
-      type: 'fast',
-      date: fast.start_time,
-      fast,
-    })),
-  ];
-
-  items.sort((a, b) =>
-    a.date < b.date ? 1 : a.date > b.date ? -1 : 0
-  );
-
-  return items;
-}
-
 // ---------- Export ----------
 
 export async function exportDatabaseData() {
   const lifts = await getDb().getAllAsync<LiftRecord>(
-    `SELECT * FROM lift_records
-     ORDER BY recorded_at ASC, id ASC`
+    `SELECT * FROM max_lifts
+     ORDER BY exercise ASC`
   );
 
   const fasts = await getDb().getAllAsync<Fast>(
@@ -223,12 +171,14 @@ export async function exportDatabaseData() {
   );
 
   return {
-    version: 2,
+    version: 3,
     exported_at: new Date().toISOString(),
     lifts,
     fasts,
   };
 }
+
+// ---------- Import ----------
 
 export async function importDatabaseData(data: {
   lifts: LiftRecord[];
@@ -237,31 +187,38 @@ export async function importDatabaseData(data: {
   const database = getDb();
 
   await database.withTransactionAsync(async () => {
+    // Merge lifts by exercise.
     for (const lift of data.lifts) {
-      const existing = await database.getFirstAsync<{ id: number }>(
-        'SELECT id FROM lift_records WHERE id = ?',
-        [lift.id]
+      const current = await database.getFirstAsync<LiftRecord>(
+        `SELECT * FROM max_lifts
+         WHERE exercise = ?`,
+        [lift.exercise]
       );
 
-      if (!existing) {
+      const shouldImport =
+        !current ||
+        lift.weight > current.weight ||
+        (lift.weight === current.weight &&
+          lift.reps > current.reps);
+
+      if (shouldImport) {
         await database.runAsync(
-          `INSERT INTO lift_records
-            (id, exercise, weight, reps, recorded_at)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO max_lifts
+            (exercise, weight, reps)
+           VALUES (?, ?, ?, ?)`,
           [
-            lift.id,
             lift.exercise,
             lift.weight,
             lift.reps,
-            lift.recorded_at,
           ]
         );
       }
     }
 
+    // Merge fasting history by ID.
     for (const fast of data.fasts) {
       const existing = await database.getFirstAsync<{ id: number }>(
-        'SELECT id FROM fasts WHERE id = ?',
+        `SELECT id FROM fasts WHERE id = ?`,
         [fast.id]
       );
 
@@ -281,8 +238,10 @@ export async function importDatabaseData(data: {
   });
 }
 
+// ---------- Delete ----------
+
 export async function deleteAllLifts(): Promise<void> {
-  await getDb().runAsync('DELETE FROM lift_records');
+  await getDb().runAsync('DELETE FROM max_lifts');
 }
 
 export async function deleteAllFasts(): Promise<void> {
@@ -291,7 +250,7 @@ export async function deleteAllFasts(): Promise<void> {
 
 export async function deleteEverything(): Promise<void> {
   await getDb().withTransactionAsync(async () => {
-    await getDb().runAsync('DELETE FROM lift_records');
+    await getDb().runAsync('DELETE FROM max_lifts');
     await getDb().runAsync('DELETE FROM fasts');
   });
 }
