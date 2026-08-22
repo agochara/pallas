@@ -4,13 +4,17 @@ export type Exercise =
   | 'Squat'
   | 'Bench Press'
   | 'Deadlift'
-  | 'Clean & Press';
+  | 'Clean & Press'
+  | 'Pullups'
+  | 'Chins';
 
 export const EXERCISES: Exercise[] = [
   'Squat',
   'Bench Press',
   'Deadlift',
   'Clean & Press',
+  'Pullups',
+  'Chins',
 ];
 
 export type LiftRecord = {
@@ -23,6 +27,12 @@ export type Fast = {
   id: number;
   start_time: string;
   end_time: string | null;
+};
+
+export type WeightEntry = {
+  id: number;
+  weight: number;
+  date: string; // YYYY-MM-DD
 };
 
 export type NewsletterState = {
@@ -54,6 +64,21 @@ export async function initDatabase(): Promise<void> {
       end_time TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS weights (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      weight REAL NOT NULL,
+      date TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS vade_mecum (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      content TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    );
+
+    INSERT OR IGNORE INTO vade_mecum (id, content, updated_at)
+    VALUES (1, '', datetime('now'));
+
     CREATE TABLE IF NOT EXISTS newsletter_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       issue_number INTEGER NOT NULL DEFAULT 33,
@@ -66,6 +91,27 @@ export async function initDatabase(): Promise<void> {
     INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text)
     VALUES (1, 33, '');
   `);
+
+  // Safe migration for existing weight tables with recorded_at column
+  const weightCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(weights);`);
+  const hasRecordedAt = weightCols.some((c) => c.name === 'recorded_at');
+  const hasDate = weightCols.some((c) => c.name === 'date');
+
+  if (hasRecordedAt && !hasDate) {
+    await db.withTransactionAsync(async () => {
+      await db!.execAsync(`
+        CREATE TABLE weights_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          weight REAL NOT NULL,
+          date TEXT NOT NULL
+        );
+        INSERT INTO weights_new (id, weight, date)
+        SELECT id, weight, substr(recorded_at, 1, 10) FROM weights;
+        DROP TABLE weights;
+        ALTER TABLE weights_new RENAME TO weights;
+      `);
+    });
+  }
 }
 
 function getDb(): SQLite.SQLiteDatabase {
@@ -74,29 +120,6 @@ function getDb(): SQLite.SQLiteDatabase {
 }
 
 // ---------- Lifts ----------
-
-export async function insertLift(
-  exercise: Exercise,
-  weight: number,
-  reps: number,
-): Promise<void> {
-  const current = await getMaxLift(exercise);
-
-  if (
-    current &&
-    (weight < current.weight ||
-      (weight === current.weight && reps <= current.reps))
-  ) {
-    return;
-  }
-
-  await getDb().runAsync(
-    `INSERT OR REPLACE INTO max_lifts
-      (exercise, weight, reps)
-     VALUES (?, ?, ?)`,
-    [exercise, weight, reps]
-  );
-}
 
 export async function setLift(
   exercise: Exercise,
@@ -198,6 +221,92 @@ export async function getFastHistory(): Promise<Fast[]> {
   );
 }
 
+// ---------- Body Weight ----------
+
+export async function getWeights(): Promise<WeightEntry[]> {
+  return getDb().getAllAsync<WeightEntry>(
+    `SELECT * FROM weights
+     ORDER BY date ASC, id ASC`
+  );
+}
+
+export async function getLatestWeight(): Promise<WeightEntry | null> {
+  const rows = await getDb().getAllAsync<WeightEntry>(
+    `SELECT * FROM weights
+     ORDER BY date DESC, id DESC
+     LIMIT 1`
+  );
+  return rows.length > 0 ? rows[0] : null;
+}
+
+export async function insertWeight(
+  weight: number,
+  date: string
+): Promise<void> {
+  const cleanDate = date.slice(0, 10);
+  await getDb().runAsync(
+    `INSERT INTO weights (weight, date)
+     VALUES (?, ?)`,
+    [weight, cleanDate]
+  );
+}
+
+export async function updateWeight(
+  id: number,
+  weight: number,
+  date: string
+): Promise<void> {
+  const cleanDate = date.slice(0, 10);
+  await getDb().runAsync(
+    `UPDATE weights
+     SET weight = ?, date = ?
+     WHERE id = ?`,
+    [weight, cleanDate, id]
+  );
+}
+
+export async function deleteWeight(id: number): Promise<void> {
+  await getDb().runAsync(`DELETE FROM weights WHERE id = ?`, [id]);
+}
+
+export async function deleteAllWeights(): Promise<void> {
+  await getDb().runAsync('DELETE FROM weights');
+}
+
+// ---------- Vade Mecum ----------
+
+export async function getVadeMecum(): Promise<string> {
+  const row = await getDb().getFirstAsync<{ content: string }>(
+    `SELECT content FROM vade_mecum WHERE id = 1`
+  );
+  if (row) return row.content;
+
+  await getDb().runAsync(
+    `INSERT OR IGNORE INTO vade_mecum (id, content, updated_at)
+     VALUES (1, '', ?)`,
+    [new Date().toISOString()]
+  );
+  return '';
+}
+
+export async function saveVadeMecum(content: string): Promise<void> {
+  await getDb().runAsync(
+    `INSERT INTO vade_mecum (id, content, updated_at)
+     VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       content = excluded.content,
+       updated_at = excluded.updated_at`,
+    [content, new Date().toISOString()]
+  );
+}
+
+export async function clearVadeMecum(): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE vade_mecum SET content = '', updated_at = ? WHERE id = 1`,
+    [new Date().toISOString()]
+  );
+}
+
 // ---------- Export ----------
 
 export async function exportDatabaseData() {
@@ -211,15 +320,26 @@ export async function exportDatabaseData() {
      ORDER BY start_time ASC, id ASC`
   );
 
+  const weights = await getDb().getAllAsync<WeightEntry>(
+    `SELECT * FROM weights
+     ORDER BY date ASC, id ASC`
+  );
+
+  const vadeMecum = await getDb().getFirstAsync<{ content: string; updated_at: string }>(
+    `SELECT content, updated_at FROM vade_mecum WHERE id = 1`
+  );
+
   const study = await getDb().getFirstAsync<NewsletterState>(
     `SELECT * FROM newsletter_settings WHERE id = 1`
   );
 
   return {
-    version: 4,
+    version: 6,
     exported_at: new Date().toISOString(),
     lifts,
     fasts,
+    weights,
+    vade_mecum: vadeMecum?.content ?? '',
     study: study ?? null,
   };
 }
@@ -229,6 +349,8 @@ export async function exportDatabaseData() {
 export async function importDatabaseData(data: {
   lifts: LiftRecord[];
   fasts: Fast[];
+  weights?: WeightEntry[];
+  vade_mecum?: string | { content: string; updated_at?: string };
   study?: NewsletterState | null;
 }): Promise<void> {
   const database = getDb();
@@ -283,6 +405,49 @@ export async function importDatabaseData(data: {
       }
     }
 
+    // Merge weight measurements by ID / date.
+    if (Array.isArray(data.weights)) {
+      for (const w of data.weights) {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM weights WHERE id = ?`,
+          [w.id]
+        );
+
+        const dateVal = ((w as any).date ?? (w as any).recorded_at ?? '').slice(0, 10);
+        if (!existing && dateVal) {
+          await database.runAsync(
+            `INSERT INTO weights
+              (id, weight, date)
+             VALUES (?, ?, ?)`,
+            [w.id, w.weight, dateVal]
+          );
+        }
+      }
+    }
+
+    // Merge Vade Mecum continuous notepad if provided.
+    if (typeof data.vade_mecum === 'string') {
+      if (data.vade_mecum.length > 0) {
+        await database.runAsync(
+          `INSERT INTO vade_mecum (id, content, updated_at)
+           VALUES (1, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             content = excluded.content,
+             updated_at = excluded.updated_at`,
+          [data.vade_mecum, new Date().toISOString()]
+        );
+      }
+    } else if (data.vade_mecum && typeof data.vade_mecum === 'object' && typeof (data.vade_mecum as any).content === 'string') {
+      await database.runAsync(
+        `INSERT INTO vade_mecum (id, content, updated_at)
+         VALUES (1, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           content = excluded.content,
+           updated_at = excluded.updated_at`,
+        [(data.vade_mecum as any).content, (data.vade_mecum as any).updated_at || new Date().toISOString()]
+      );
+    }
+
     // Import study / newsletter state if provided.
     if (data.study) {
       await database.runAsync(
@@ -315,6 +480,11 @@ export async function deleteEverything(): Promise<void> {
   await getDb().withTransactionAsync(async () => {
     await getDb().runAsync('DELETE FROM max_lifts');
     await getDb().runAsync('DELETE FROM fasts');
+    await getDb().runAsync('DELETE FROM weights');
+    await getDb().runAsync(
+      `UPDATE vade_mecum SET content = '', updated_at = ? WHERE id = 1`,
+      [new Date().toISOString()]
+    );
     await getDb().runAsync('DELETE FROM newsletter_settings');
     await getDb().runAsync(
       `INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text) VALUES (1, 33, '')`

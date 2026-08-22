@@ -8,12 +8,13 @@ Pallas follows a **via negativa** design philosophy: keep the system small, dire
 
 ## Structure
 
-Pallas contains two independent modules:
+Pallas contains three independent modules:
 
 * 📜 **The Study** — reading, reflection, and daily intellectual material.
-* 🪽 **Askesis** — physical training and fasting.
+* 📓 **Vade Mecum** — a single continuous personal notepad and commonplace book.
+* 🪽 **Askesis** — physical training, fasting, and weight tracking.
 
-The launcher provides access to both modules. Each module can return to the Pallas launcher.
+The launcher provides access to all modules. Each module can return to the Pallas launcher.
 
 ## The Study 📜
 
@@ -29,22 +30,18 @@ It contains:
 
 The current issue and daily state are persisted locally so that the same day's content remains stable after reopening the application.
 
+## Vade Mecum 📓
+
+Vade Mecum is a single continuous personal notepad and commonplace book (*vade mecum* — "go with me").
+
+* **One Continuous Document**: No separate notes, folders, tags, categories, tasks, checkboxes, or priorities.
+* **Unconstrained Structure**: The user writes plain text for reading lists, thoughts, reminders, or ideas. The structure belongs to the user, not the application.
+* **Restrained Typography**: Warm parchment background, dark charcoal text, serif typography, and generous line spacing.
+* **Automatic Persistence**: Changes autosave directly to SQLite offline.
+
 ## Askesis 🪽
 
-Askesis is the physical-training module. It records two things: **strength and fasting**.
-
-### Lifts
-
-Four exercises are currently supported:
-
-* Squat
-* Bench Press
-* Deadlift
-* Clean & Press
-
-Only the current maximum is stored for each exercise. No lift history is maintained.
-
-A new record replaces the existing maximum when appropriate, while the Lifts interface also permits direct editing or clearing of a record.
+Askesis is the physical-training module. It contains three tabs in order: **Fasting, Strength, and Weight**.
 
 ### Fasting
 
@@ -56,7 +53,32 @@ A fast can be:
 * entered manually for a previous period;
 * edited or deleted later.
 
-The calendar displays fasting periods on a continuous weekly timeline, including fasts crossing midnight or spanning multiple days.
+The 7-day calendar displays fasting periods as a vertical bar chart with average fasting duration and weekly navigation.
+
+### Strength
+
+Six exercises are currently supported:
+
+* Squat
+* Bench Press
+* Deadlift
+* Clean & Press
+* Pullups
+* Chins
+
+Only the current maximum is stored for each exercise. Bodyweight-only performance can be logged with 0 kg. No exercise history is maintained.
+
+A new record replaces the existing maximum when appropriate, while the Strength interface also permits direct editing or clearing of a record.
+
+### Weight
+
+Weight tracks body weight measurements over time.
+
+* Records individual weight measurements with calendar date (`YYYY-MM-DD`).
+* Displays the current/latest weight prominently.
+* Renders a continuous time-series chart with adaptive time ranges (W, M, 3M, Y).
+* Allows direct addition, editing, and deletion of measurements.
+* Excludes goals, calorie tracking, BMI, streaks, or unnecessary analytics (*via negativa*).
 
 ## Data & Persistence
 
@@ -68,6 +90,8 @@ The database contains:
 
 * `max_lifts` — current maximum lift for each exercise.
 * `fasts` — fasting history.
+* `weights` — body weight history with calendar dates.
+* `vade_mecum` — continuous personal notepad content.
 * `newsletter_settings` — The Study's persistent state and settings.
 
 The database uses SQLite WAL mode.
@@ -81,9 +105,9 @@ The application deliberately separates **user data** from **static content**:
 
 Pallas Settings provides:
 
-* JSON export of application data.
+* JSON export of application data (including lifts, fasts, weights, Vade Mecum notes, and newsletter state).
 * JSON import and merge.
-* Granular deletion of lift or fasting data.
+* Granular deletion of lift, fasting, weight, or Vade Mecum data.
 * Complete database reset.
 * Direct SQLite query execution.
 

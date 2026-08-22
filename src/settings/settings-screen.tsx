@@ -12,10 +12,13 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme, spacing, radius, type } from '../themes/theme';
+import Constants from 'expo-constants';
 import {
   executeRawSql,
   deleteAllLifts,
   deleteAllFasts,
+  deleteAllWeights,
+  clearVadeMecum,
   deleteEverything,
 } from '../database/db';
 import { exportPallasData, importPallasData } from '../database/export';
@@ -86,6 +89,14 @@ function SqlInfoModal({
       sql: 'SELECT * FROM fasts ORDER BY start_time DESC;',
     },
     {
+      title: 'View body weight log (most recent first)',
+      sql: 'SELECT * FROM weights ORDER BY date DESC, id DESC;',
+    },
+    {
+      title: 'View Vade Mecum notepad content',
+      sql: 'SELECT * FROM vade_mecum;',
+    },
+    {
       title: 'View The Study newsletter settings',
       sql: 'SELECT * FROM newsletter_settings;',
     },
@@ -96,6 +107,10 @@ function SqlInfoModal({
     {
       title: 'Insert a completed fast',
       sql: "INSERT INTO fasts (start_time, end_time)\nVALUES ('2026-08-21T20:00:00.000Z', '2026-08-22T12:00:00.000Z');",
+    },
+    {
+      title: 'Insert a weight measurement',
+      sql: "INSERT INTO weights (weight, date)\nVALUES (78.5, '2026-08-22');",
     },
     {
       title: 'Update a fast end time',
@@ -139,10 +154,10 @@ function SqlInfoModal({
               </Text>
               <View style={{ marginTop: spacing.xs }}>
                 <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • exercise TEXT PRIMARY KEY ('Squat', 'Bench Press', 'Deadlift', 'Clean & Press')
+                  • exercise TEXT PRIMARY KEY ('Squat', 'Bench Press', 'Deadlift', 'Clean & Press', 'Pullups', 'Chins')
                 </Text>
                 <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • weight REAL (e.g. 100.5)
+                  • weight REAL (e.g. 100.5, or 0 for bodyweight)
                 </Text>
                 <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
                   • reps INTEGER (e.g. 5)
@@ -169,7 +184,45 @@ function SqlInfoModal({
               </View>
             </View>
 
-            {/* Table 3: newsletter_settings */}
+            {/* Table 3: weights */}
+            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
+              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>weights</Text>
+              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
+                Stores body weight measurements with calendar dates.
+              </Text>
+              <View style={{ marginTop: spacing.xs }}>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • id INTEGER PRIMARY KEY AUTOINCREMENT
+                </Text>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • weight REAL (e.g. 78.5)
+                </Text>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • date TEXT (YYYY-MM-DD)
+                </Text>
+              </View>
+            </View>
+
+            {/* Table 4: vade_mecum */}
+            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
+              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>vade_mecum</Text>
+              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
+                Stores the continuous Vade Mecum commonplace book document.
+              </Text>
+              <View style={{ marginTop: spacing.xs }}>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • id INTEGER PRIMARY KEY (1)
+                </Text>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • content TEXT
+                </Text>
+                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
+                  • updated_at TEXT (ISO 8601 string)
+                </Text>
+              </View>
+            </View>
+
+            {/* Table 5: newsletter_settings */}
             <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
               <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>newsletter_settings</Text>
               <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
@@ -519,8 +572,8 @@ export function SettingsScreen() {
         <Pressable
           onPress={() =>
             confirmDelete(
-              'Delete lift history?',
-              'All recorded lifts will be permanently deleted.',
+              'Delete strength history?',
+              'All recorded strength maxes will be permanently deleted.',
               deleteAllLifts
             )
           }
@@ -528,7 +581,7 @@ export function SettingsScreen() {
           style={{ paddingVertical: spacing.sm }}
         >
           <Text style={[type.body, { color: c.text }]}>
-            Delete lift history
+            Delete strength history
           </Text>
         </Pressable>
       </Card>
@@ -551,12 +604,48 @@ export function SettingsScreen() {
         </Pressable>
       </Card>
 
-      <Card>
+      <Card style={{ marginBottom: spacing.md }}>
+        <Pressable
+          onPress={() =>
+            confirmDelete(
+              'Delete weight history?',
+              'All recorded weight measurements will be permanently deleted.',
+              deleteAllWeights
+            )
+          }
+          disabled={working}
+          style={{ paddingVertical: spacing.sm }}
+        >
+          <Text style={[type.body, { color: c.text }]}>
+            Delete weight history
+          </Text>
+        </Pressable>
+      </Card>
+
+      <Card style={{ marginBottom: spacing.md }}>
+        <Pressable
+          onPress={() =>
+            confirmDelete(
+              'Clear Vade Mecum?',
+              'All notes in Vade Mecum will be permanently cleared.',
+              clearVadeMecum
+            )
+          }
+          disabled={working}
+          style={{ paddingVertical: spacing.sm }}
+        >
+          <Text style={[type.body, { color: c.text }]}>
+            Clear Vade Mecum
+          </Text>
+        </Pressable>
+      </Card>
+
+      <Card style={{ marginBottom: spacing.lg }}>
         <Pressable
           onPress={() =>
             confirmDelete(
               'Delete everything?',
-              'All lifts, fasts, and settings will be permanently reset.',
+              'All strength maxes, fasts, weights, Vade Mecum notes, and settings will be permanently reset.',
               deleteEverything
             )
           }
@@ -567,6 +656,27 @@ export function SettingsScreen() {
             Delete everything
           </Text>
         </Pressable>
+      </Card>
+
+      <Text
+        style={[
+          type.caption,
+          {
+            color: c.textSecondary,
+            marginBottom: spacing.sm,
+          },
+        ]}
+      >
+        ABOUT
+      </Text>
+
+      <Card style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.xs }}>
+          <Text style={[type.body, { color: c.text }]}>Pallas</Text>
+          <Text style={[type.body, { color: c.textSecondary }]}>
+            v{Constants.expoConfig?.version ?? '2.0.0'}
+          </Text>
+        </View>
       </Card>
     </ScrollView>
   );

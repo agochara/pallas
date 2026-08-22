@@ -12,13 +12,14 @@ import {
   Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Svg, { Line, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
 import { useTheme, spacing, radius, type, Colors } from '../themes/theme';
 import {
   Exercise,
   EXERCISES,
   LiftRecord,
   Fast,
-  insertLift,
+  WeightEntry,
   setLift,
   deleteLift,
   getActiveFast,
@@ -29,6 +30,11 @@ import {
   deleteFast,
   getFastHistory,
   getMaxLift,
+  getWeights,
+  getLatestWeight,
+  insertWeight,
+  updateWeight,
+  deleteWeight,
 } from '../database/db';
 
 // ---------- formatting helpers ----------
@@ -316,94 +322,335 @@ function DateTimeField({
   );
 }
 
-// ---------- Log Screen ----------
+// ---------- Weight Screen ----------
 
-export function LogScreen() {
+function formatDateToIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseDateStringToMs(dateStr: string): number {
+  const clean = dateStr.slice(0, 10);
+  const [y, m, d] = clean.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0).getTime();
+}
+
+function formatDisplayDate(dateStr: string): string {
+  const clean = dateStr.slice(0, 10);
+  const [y, m, d] = clean.split('-').map(Number);
+  const dateObj = new Date(y, (m || 1) - 1, d || 1);
+  return dateObj.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function DateField({
+  label = 'Date',
+  value,
+  onChange,
+  maximumDate,
+}: {
+  label?: string;
+  value: string; // YYYY-MM-DD
+  onChange: (dateStr: string) => void;
+  maximumDate?: Date;
+}) {
   const c = useTheme();
-  const [activeFast, setActiveFastState] = useState<Fast | null>(null);
-  const [now, setNow] = useState(Date.now());
-  const [showLiftModal, setShowLiftModal] = useState(false);
-  const [showStartFast, setShowStartFast] = useState(false);
-  const [showManualFast, setShowManualFast] = useState(false);
-  const [showEndFast, setShowEndFast] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
-  const load = useCallback(async () => {
-    setActiveFastState(await getActiveFast());
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!activeFast) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [activeFast]);
-
-  const elapsed = activeFast ? now - new Date(activeFast.start_time).getTime() : 0;
+  const clean = (value || formatDateToIso(new Date())).slice(0, 10);
+  const [y, m, d] = clean.split('-').map(Number);
+  const dateObj = new Date(y, (m || 1) - 1, d || 1);
 
   return (
-    <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.screenPad}
-    >
-      <Text style={[type.largeTitle, { color: c.text, marginBottom: spacing.lg }]}>Log</Text>
+    <View style={{ marginTop: spacing.md }}>
+      <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.xs }]}>
+        {label}
+      </Text>
+      <Pressable
+        onPress={() => setShowPicker(true)}
+        style={[styles.dateChip, { borderColor: c.separator, alignItems: 'flex-start' }]}
+      >
+        <Text style={[type.body, { color: c.text }]}>
+          {dateObj.toLocaleDateString(undefined, {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
+        </Text>
+      </Pressable>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        {activeFast ? (
-          <View>
-            <Text style={[type.caption, { color: c.textSecondary }]}>
-              FASTING · started {formatTime(activeFast.start_time)}
-            </Text>
-            <Text style={[type.monoLarge, { color: c.text, marginVertical: spacing.sm }]}>
-              {formatHMS(elapsed)}
-            </Text>
-            <PrimaryButton label="END FAST" onPress={() => setShowEndFast(true)} />
-          </View>
-        ) : (
-          <View>
-            <Text style={[type.title, { color: c.text, marginBottom: spacing.sm }]}>Fast</Text>
-            <PrimaryButton label="START FAST" onPress={() => setShowStartFast(true)} />
-            <View style={{ height: spacing.sm }} />
-            <SecondaryButton label="Enter fast manually" onPress={() => setShowManualFast(true)} />
-          </View>
-        )}
-      </Card>
-
-      <Card>
-        <Text style={[type.title, { color: c.text, marginBottom: spacing.sm }]}>Log Lift</Text>
-        <PrimaryButton label="LOG LIFT" onPress={() => setShowLiftModal(true)} />
-      </Card>
-
-      <LiftModal
-        visible={showLiftModal}
-        onClose={() => setShowLiftModal(false)}
-        onSaved={load}
-      />
-      <StartFastModal
-        visible={showStartFast}
-        onClose={() => setShowStartFast(false)}
-        onSaved={load}
-      />
-      <ManualFastModal
-        visible={showManualFast}
-        onClose={() => setShowManualFast(false)}
-        onSaved={load}
-      />
-      {activeFast && (
-        <EndFastModal
-          visible={showEndFast}
-          fast={activeFast}
-          onClose={() => setShowEndFast(false)}
-          onSaved={load}
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          maximumDate={maximumDate}
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          onChange={(event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (event.type === 'dismissed' || !selected) return;
+            onChange(formatDateToIso(selected));
+          }}
         />
       )}
-    </ScrollView>
+    </View>
   );
 }
 
-function LiftModal({
+type TimeRange = 'W' | 'M' | '3M' | 'Y';
+
+type TimeWindow = {
+  startMs: number;
+  endMs: number;
+  label: string;
+  ticks: { label: string; timeMs: number }[];
+};
+
+function getTimeWindow(range: TimeRange, offset: number): TimeWindow {
+  const now = new Date();
+
+  if (range === 'W') {
+    const endDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+    const startDay = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate() - 6);
+
+    const start = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate(), 0, 0, 0);
+    const end = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate(), 23, 59, 59, 999);
+
+    const startStr = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const endStr = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const label = `${startStr} – ${endStr}`;
+
+    const ticks: { label: string; timeMs: number }[] = [];
+    const DAY_NAMES = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i, 12, 0, 0);
+      ticks.push({
+        label: DAY_NAMES[d.getDay()],
+        timeMs: d.getTime(),
+      });
+    }
+
+    return { startMs: start.getTime(), endMs: end.getTime(), label, ticks };
+  }
+
+  if (range === 'M') {
+    const m = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const daysInMonth = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+
+    const start = new Date(m.getFullYear(), m.getMonth(), 1, 0, 0, 0);
+    const end = new Date(m.getFullYear(), m.getMonth(), daysInMonth, 23, 59, 59, 999);
+
+    const label = m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+    const ticks: { label: string; timeMs: number }[] = [];
+    const step = Math.floor(daysInMonth / 4);
+    const checkDays = [1, 1 + step, 1 + step * 2, 1 + step * 3, daysInMonth];
+    for (const dayNum of checkDays) {
+      const d = new Date(m.getFullYear(), m.getMonth(), dayNum, 12, 0, 0);
+      ticks.push({
+        label: String(dayNum),
+        timeMs: d.getTime(),
+      });
+    }
+
+    return { startMs: start.getTime(), endMs: end.getTime(), label, ticks };
+  }
+
+  if (range === '3M') {
+    const endMonth = new Date(now.getFullYear(), now.getMonth() + offset * 3, 1);
+    const startMonth = new Date(endMonth.getFullYear(), endMonth.getMonth() - 2, 1);
+    const daysInEndMonth = new Date(endMonth.getFullYear(), endMonth.getMonth() + 1, 0).getDate();
+
+    const start = new Date(startMonth.getFullYear(), startMonth.getMonth(), 1, 0, 0, 0);
+    const end = new Date(endMonth.getFullYear(), endMonth.getMonth(), daysInEndMonth, 23, 59, 59, 999);
+
+    const startStr = startMonth.toLocaleDateString(undefined, { month: 'short' });
+    const endStr = endMonth.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    const label = `${startStr} – ${endStr}`;
+
+    const ticks: { label: string; timeMs: number }[] = [];
+    for (let i = 0; i < 3; i++) {
+      const mDate = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 15, 12, 0, 0);
+      ticks.push({
+        label: mDate.toLocaleDateString(undefined, { month: 'short' }),
+        timeMs: mDate.getTime(),
+      });
+    }
+
+    return { startMs: start.getTime(), endMs: end.getTime(), label, ticks };
+  }
+
+  // range === 'Y' (12 Months window)
+  const endMonth = new Date(now.getFullYear(), now.getMonth() + offset * 12, 1);
+  const startMonth = new Date(endMonth.getFullYear(), endMonth.getMonth() - 11, 1);
+  const daysInEndMonth = new Date(endMonth.getFullYear(), endMonth.getMonth() + 1, 0).getDate();
+
+  const start = new Date(startMonth.getFullYear(), startMonth.getMonth(), 1, 0, 0, 0);
+  const end = new Date(endMonth.getFullYear(), endMonth.getMonth(), daysInEndMonth, 23, 59, 59, 999);
+
+  const startStr = startMonth.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  const endStr = endMonth.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  const label = `${startStr} – ${endStr}`;
+
+  const ticks: { label: string; timeMs: number }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const mDate = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 15, 12, 0, 0);
+    const mInitial = mDate.toLocaleDateString(undefined, { month: 'narrow' });
+    ticks.push({
+      label: mInitial,
+      timeMs: mDate.getTime(),
+    });
+  }
+
+  return { startMs: start.getTime(), endMs: end.getTime(), label, ticks };
+}
+
+function WeightTimeSeriesChart({
+  entries,
+  window,
+  onSelectEntry,
+}: {
+  entries: WeightEntry[];
+  window: TimeWindow;
+  onSelectEntry: (entry: WeightEntry) => void;
+}) {
+  const c = useTheme();
+  const [chartWidth, setChartWidth] = useState(320);
+
+  const chartHeight = 180;
+  const padLeft = 14;
+  const padRight = 36;
+  const padTop = 16;
+  const padBottom = 26;
+
+  const drawWidth = Math.max(100, chartWidth - padLeft - padRight);
+  const drawHeight = chartHeight - padTop - padBottom;
+  const timeSpan = window.endMs - window.startMs || 1;
+
+  // Filter entries in this window and map timestamps continuously
+  const inWindow = entries
+    .filter((e) => {
+      const t = parseDateStringToMs(e.date);
+      return t >= window.startMs && t <= window.endMs;
+    })
+    .sort((a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date));
+
+  // Determine Y-scale range
+  const weightsInWindow = inWindow.map((e) => e.weight);
+  const rawMin = weightsInWindow.length > 0 ? Math.min(...weightsInWindow) : 70;
+  const rawMax = weightsInWindow.length > 0 ? Math.max(...weightsInWindow) : 80;
+  const pad = Math.max(2, (rawMax - rawMin) * 0.2);
+  const minW = Math.floor(rawMin - pad);
+  const maxW = Math.ceil(rawMax + pad);
+  const yRange = maxW - minW || 1;
+
+  // Continuous time mapping: screen coordinates proportional to real date
+  const mappedPoints = inWindow.map((e) => {
+    const t = parseDateStringToMs(e.date);
+    const xPct = Math.max(0, Math.min(1, (t - window.startMs) / timeSpan));
+    const x = padLeft + xPct * drawWidth;
+    const y = padTop + ((maxW - e.weight) / yRange) * drawHeight;
+    return { x, y, entry: e };
+  });
+
+  const polylinePoints = mappedPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+  // Y-axis ticks on the right
+  const midW = Math.round((minW + maxW) / 2);
+  const yTicks = [
+    { value: maxW, y: padTop },
+    { value: midW, y: padTop + drawHeight / 2 },
+    { value: minW, y: padTop + drawHeight },
+  ];
+
+  return (
+    <View
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0) setChartWidth(w);
+      }}
+      style={{ width: '100%', height: chartHeight }}
+    >
+      <Svg width={chartWidth} height={chartHeight}>
+        {/* Horizontal gridlines & Y-axis labels */}
+        {yTicks.map((tick, i) => (
+          <G key={i}>
+            <Line
+              x1={padLeft}
+              y1={tick.y}
+              x2={chartWidth - padRight}
+              y2={tick.y}
+              stroke={c.separator}
+              strokeDasharray={i === yTicks.length - 1 ? undefined : '3,4'}
+              strokeWidth={i === yTicks.length - 1 ? '1.5' : '1'}
+              opacity={0.6}
+            />
+            <SvgText
+              x={chartWidth - padRight + 6}
+              y={tick.y + 4}
+              fill={c.textSecondary}
+              fontSize="10"
+              textAnchor="start"
+              fontFamily={Platform.OS === 'ios' ? 'Menlo' : 'monospace'}
+            >
+              {tick.value}
+            </SvgText>
+          </G>
+        ))}
+
+        {/* Continuous Time-Series Line */}
+        {mappedPoints.length >= 2 && (
+          <Polyline
+            points={polylinePoints}
+            fill="none"
+            stroke={c.accent}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Data Point Dots */}
+        {mappedPoints.map((p, i) => (
+          <Circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={mappedPoints.length > 30 ? 2.5 : 4}
+            fill={c.card}
+            stroke={c.accent}
+            strokeWidth="2"
+          />
+        ))}
+
+        {/* Adaptive X-Axis Labels positioned continuously by timestamp */}
+        {window.ticks.map((tick, i) => {
+          const xPct = Math.max(0, Math.min(1, (tick.timeMs - window.startMs) / timeSpan));
+          const x = padLeft + xPct * drawWidth;
+          return (
+            <SvgText
+              key={i}
+              x={x}
+              y={chartHeight - 6}
+              fill={c.textSecondary}
+              fontSize="10"
+              textAnchor="middle"
+              fontFamily={Platform.OS === 'ios' ? 'Menlo' : 'monospace'}
+            >
+              {tick.label}
+            </SvgText>
+          );
+        })}
+      </Svg>
+    </View>
+  );
+}
+
+function AddWeightModal({
   visible,
   onClose,
   onSaved,
@@ -413,34 +660,24 @@ function LiftModal({
   onSaved: () => void;
 }) {
   const c = useTheme();
-  const [exercise, setExercise] = useState<Exercise | null>(null);
   const [weight, setWeight] = useState('');
-  const [reps, setReps] = useState('');
-  const [previous, setPrevious] = useState<LiftRecord | null>(null);
+  const [date, setDate] = useState(formatDateToIso(new Date()));
 
   useEffect(() => {
-    if (!visible) {
-      setExercise(null);
+    if (visible) {
       setWeight('');
-      setReps('');
-      setPrevious(null);
+      setDate(formatDateToIso(new Date()));
     }
   }, [visible]);
 
-  async function pick(ex: Exercise) {
-    setExercise(ex);
-    const prev = await getMaxLift(ex);
-    setPrevious(prev);
-    setWeight(prev ? `${prev.weight}` : '');
-    setReps(prev ? `${prev.reps}` : '');
-  }
+  async function handleSave() {
+    const val = parseFloat(weight);
+    if (isNaN(val) || val <= 0) {
+      Alert.alert('Invalid weight', 'Please enter a valid weight in kg.');
+      return;
+    }
 
-  async function save() {
-    if (!exercise) return;
-    const w = parseFloat(weight);
-    const r = parseInt(reps, 10);
-    if (isNaN(w) || isNaN(r)) return;
-    await insertLift(exercise, w, r);
+    await insertWeight(val, date);
     onSaved();
     onClose();
   }
@@ -453,62 +690,385 @@ function LiftModal({
       >
         <View style={[styles.sheet, { backgroundColor: c.background }]}>
           <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>
-              {exercise ? exercise.toUpperCase() : 'Log Lift'}
-            </Text>
-            <Pressable onPress={onClose}>
+            <Text style={[type.title, { color: c.text }]}>Log Weight</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
               <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
             </Pressable>
           </View>
 
-          {!exercise ? (
-            <View>
-              {EXERCISES.map((ex) => (
-                <Pressable
-                  key={ex}
-                  onPress={() => pick(ex)}
-                  style={[styles.exerciseRow, { borderColor: c.separator }]}
-                >
-                  <Text style={[type.body, { color: c.text }]}>{ex}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <View>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
-                Weight (kg)
-              </Text>
-              <TextInput
-                value={weight}
-                onChangeText={setWeight}
-                keyboardType="decimal-pad"
-                style={[styles.input, { color: c.text, borderColor: c.separator }]}
-              />
+          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
+            Weight (kg)
+          </Text>
+          <TextInput
+            value={weight}
+            onChangeText={setWeight}
+            placeholder="e.g. 78.5"
+            placeholderTextColor={c.textSecondary}
+            keyboardType="decimal-pad"
+            autoFocus
+            style={[styles.input, { color: c.text, borderColor: c.separator }]}
+          />
 
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
-                Reps
-              </Text>
-              <TextInput
-                value={reps}
-                onChangeText={setReps}
-                keyboardType="number-pad"
-                style={[styles.input, { color: c.text, borderColor: c.separator }]}
-              />
+          <DateField
+            label="Date"
+            value={date}
+            onChange={setDate}
+            maximumDate={new Date()}
+          />
 
-              {previous && (
-                <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
-                  Previous: {fmtWeight(previous.weight)} kg × {previous.reps}
-                </Text>
-              )}
-
-              <View style={{ marginTop: spacing.lg }}>
-                <PrimaryButton label="SAVE" onPress={save} />
-              </View>
-            </View>
-          )}
+          <View style={{ marginTop: spacing.lg }}>
+            <PrimaryButton label="SAVE WEIGHT" onPress={handleSave} />
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+function EditWeightModal({
+  visible,
+  entry,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  entry: WeightEntry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const c = useTheme();
+  const [weight, setWeight] = useState('');
+  const [date, setDate] = useState(formatDateToIso(new Date()));
+
+  useEffect(() => {
+    if (visible && entry) {
+      setWeight(String(entry.weight));
+      setDate(entry.date.slice(0, 10));
+    }
+  }, [visible, entry]);
+
+  async function handleSave() {
+    if (!entry) return;
+    const val = parseFloat(weight);
+    if (isNaN(val) || val <= 0) {
+      Alert.alert('Invalid weight', 'Please enter a valid weight in kg.');
+      return;
+    }
+
+    await updateWeight(entry.id, val, date);
+    onSaved();
+    onClose();
+  }
+
+  function handleDelete() {
+    if (!entry) return;
+    Alert.alert(
+      'Delete measurement?',
+      'This weight entry will be permanently deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteWeight(entry.id);
+            onSaved();
+            onClose();
+          },
+        },
+      ]
+    );
+  }
+
+  if (!entry) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalWrap}
+      >
+        <View style={[styles.sheet, { backgroundColor: c.background }]}>
+          <View style={styles.sheetHeaderRow}>
+            <Text style={[type.title, { color: c.text }]}>Edit Weight</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
+            </Pressable>
+          </View>
+
+          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
+            Weight (kg)
+          </Text>
+          <TextInput
+            value={weight}
+            onChangeText={setWeight}
+            keyboardType="decimal-pad"
+            style={[styles.input, { color: c.text, borderColor: c.separator }]}
+          />
+
+          <DateField
+            label="Date"
+            value={date}
+            onChange={setDate}
+            maximumDate={new Date()}
+          />
+
+          <View style={{ marginTop: spacing.lg }}>
+            <PrimaryButton label="SAVE" onPress={handleSave} />
+            <View style={{ height: spacing.sm }} />
+            <DangerButton label="DELETE MEASUREMENT" onPress={handleDelete} />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+export function WeightScreen() {
+  const c = useTheme();
+  const [weights, setWeights] = useState<WeightEntry[]>([]);
+  const [latestGlobalWeight, setLatestGlobalWeight] = useState<WeightEntry | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('Y');
+  const [rangeOffset, setRangeOffset] = useState<number>(0);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<WeightEntry | null>(null);
+
+  const load = useCallback(async () => {
+    const list = await getWeights();
+    setWeights(list);
+    setLatestGlobalWeight(await getLatestWeight());
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const window = getTimeWindow(timeRange, rangeOffset);
+
+  // Filter entries within the current window
+  const inWindow = weights
+    .filter((e) => {
+      const t = parseDateStringToMs(e.date);
+      return t >= window.startMs && t <= window.endMs;
+    })
+    .sort((a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date));
+
+  // Metrics for period
+  const avgWeight =
+    inWindow.length > 0
+      ? inWindow.reduce((s, e) => s + e.weight, 0) / inWindow.length
+      : null;
+
+  const firstInWindow = inWindow[0] ?? null;
+  const lastInWindow = inWindow[inWindow.length - 1] ?? null;
+  const delta =
+    firstInWindow && lastInWindow && inWindow.length >= 2
+      ? lastInWindow.weight - firstInWindow.weight
+      : null;
+
+  let deltaText = '';
+  if (inWindow.length === 0) {
+    deltaText = 'No measurements in this period';
+  } else if (inWindow.length === 1) {
+    deltaText = `1 measurement recorded (${inWindow[0].weight} kg)`;
+  } else if (delta !== null) {
+    if (delta < 0) {
+      deltaText = `${Math.abs(delta).toFixed(1)} kg lost over period`;
+    } else if (delta > 0) {
+      deltaText = `${delta.toFixed(1)} kg gained over period`;
+    } else {
+      deltaText = 'No net change over period';
+    }
+  }
+
+  const RANGES: { key: TimeRange; label: string }[] = [
+    { key: 'W', label: 'W' },
+    { key: 'M', label: 'M' },
+    { key: '3M', label: '3M' },
+    { key: 'Y', label: 'Y' },
+  ];
+
+  const historyDesc = [...weights].reverse();
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: c.background }}
+      contentContainerStyle={styles.screenPad}
+    >
+      {/* Title & Log Button Row */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: spacing.md,
+        }}
+      >
+        <Text style={[type.largeTitle, { color: c.text }]}>Weight</Text>
+        <Pressable
+          onPress={() => setShowAdd(true)}
+          style={({ pressed }) => [
+            {
+              backgroundColor: c.accent,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.xs + 2,
+              borderRadius: radius.sm,
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}
+        >
+          <Text style={[type.caption, { color: c.accentText, fontWeight: '700' }]}>+ LOG</Text>
+        </Pressable>
+      </View>
+
+      {/* Main Chart Card */}
+      <Card style={{ marginBottom: spacing.lg }}>
+        {/* Time Range Pills: W | M | 3M | Y */}
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: c.surface,
+            borderRadius: radius.sm,
+            padding: 3,
+            marginBottom: spacing.md,
+          }}
+        >
+          {RANGES.map((r) => {
+            const active = timeRange === r.key;
+            return (
+              <Pressable
+                key={r.key}
+                onPress={() => {
+                  setTimeRange(r.key);
+                  setRangeOffset(0);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 6,
+                  alignItems: 'center',
+                  backgroundColor: active ? c.accent : 'transparent',
+                  borderRadius: 6,
+                }}
+              >
+                <Text
+                  style={[
+                    type.caption,
+                    {
+                      color: active ? c.accentText : c.textSecondary,
+                      fontWeight: active ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {r.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Date Range Header with Prev/Next Controls */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: spacing.sm,
+          }}
+        >
+          <Text style={[type.title, { color: c.text, fontSize: 19, fontWeight: '700' }]}>
+            {window.label}
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable
+              onPress={() => setRangeOffset((o) => o - 1)}
+              hitSlop={10}
+              style={{ paddingHorizontal: 6 }}
+            >
+              <Text style={{ color: c.textSecondary, fontSize: 22, lineHeight: 24 }}>‹</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setRangeOffset((o) => Math.min(0, o + 1))}
+              disabled={rangeOffset >= 0}
+              hitSlop={10}
+              style={{ paddingHorizontal: 6 }}
+            >
+              <Text
+                style={{
+                  color: rangeOffset >= 0 ? c.separator : c.textSecondary,
+                  fontSize: 22,
+                  lineHeight: 24,
+                }}
+              >
+                ›
+              </Text>
+            </Pressable>
+            {rangeOffset < 0 && (
+              <Pressable
+                onPress={() => setRangeOffset(0)}
+                hitSlop={10}
+                style={{ paddingHorizontal: 6 }}
+              >
+                <Text style={{ color: c.textSecondary, fontSize: 16 }}>↺</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        {/* Prominent Metric Display */}
+        <View style={{ marginBottom: spacing.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+            <Text style={{ fontSize: 32, fontWeight: '700', color: c.text }}>
+              {latestGlobalWeight ? latestGlobalWeight.weight.toFixed(1) : '--'}
+            </Text>
+            <Text style={[type.bodyMedium, { color: c.textSecondary, marginLeft: 4 }]}>
+              kg
+            </Text>
+          </View>
+          <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
+            {deltaText}
+          </Text>
+        </View>
+
+        {/* Continuous Time-Series Chart */}
+        <WeightTimeSeriesChart
+          entries={weights}
+          window={window}
+          onSelectEntry={setEditing}
+        />
+      </Card>
+
+      {/* History Section */}
+      <Text style={[type.title, { color: c.text, marginBottom: spacing.sm }]}>History</Text>
+      {historyDesc.length === 0 ? (
+        <EmptyState text="No weight entries recorded yet" />
+      ) : (
+        historyDesc.map((w) => (
+          <Pressable key={w.id} onPress={() => setEditing(w)}>
+            <View style={[styles.historyRow, { borderColor: c.separator }]}>
+              <Text style={[type.body, { color: c.text, fontWeight: '600' }]}>
+                {w.weight} kg
+              </Text>
+              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
+                {formatDisplayDate(w.date)}
+              </Text>
+            </View>
+          </Pressable>
+        ))
+      )}
+
+      <AddWeightModal
+        visible={showAdd}
+        onClose={() => setShowAdd(false)}
+        onSaved={load}
+      />
+      <EditWeightModal
+        visible={!!editing}
+        entry={editing}
+        onClose={() => setEditing(null)}
+        onSaved={load}
+      />
+    </ScrollView>
   );
 }
 
@@ -1025,7 +1585,7 @@ function EditLiftModal({
     if (!exercise) return;
     const w = parseFloat(weight);
     const r = parseInt(reps, 10);
-    if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) {
+    if (isNaN(w) || isNaN(r) || w < 0 || r <= 0) {
       Alert.alert('Invalid input', 'Please enter valid numbers for weight and reps.');
       return;
     }
@@ -1106,9 +1666,9 @@ function EditLiftModal({
   );
 }
 
-// ---------- Lifts Screen ----------
+// ---------- Strength Screen ----------
 
-export function LiftsScreen() {
+export function StrengthScreen() {
   const c = useTheme();
   const [maxLifts, setMaxLifts] =
     useState<Record<Exercise, LiftRecord | null> | null>(null);
@@ -1145,7 +1705,7 @@ export function LiftsScreen() {
           },
         ]}
       >
-        Lifts
+        Strength
       </Text>
 
       {EXERCISES.map((ex) => {
@@ -1171,7 +1731,9 @@ export function LiftsScreen() {
                     },
                   ]}
                 >
-                  {fmtWeight(rec.weight)} kg × {rec.reps}
+                  {rec.weight === 0
+                    ? `Bodyweight × ${rec.reps}`
+                    : `${fmtWeight(rec.weight)} kg × ${rec.reps}`}
                 </Text>
               ) : (
                 <Text
@@ -1201,6 +1763,8 @@ export function LiftsScreen() {
     </ScrollView>
   );
 }
+
+export const LiftsScreen = StrengthScreen;
 
 // ---------- Fasting Screen ----------
 

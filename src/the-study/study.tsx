@@ -307,7 +307,7 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
         }}
       >
         <Pressable onPress={onBack} hitSlop={8} style={{ width: 100 }}>
-          <Text style={[type.bodyMedium, { color: paperText }]}>‹ Pallas</Text>
+          <Text style={{ fontFamily: 'EBGaramond_500Medium', fontSize: 17, color: paperText }}>‹ Pallas</Text>
         </Pressable>
         <Text style={[type.bodyMedium, { color: paperMuted, fontWeight: '600', letterSpacing: 1 }]}>
           THE STUDY

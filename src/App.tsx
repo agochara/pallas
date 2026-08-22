@@ -6,42 +6,74 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
-  SafeAreaView,
   Platform,
+  BackHandler,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { useTheme, spacing, radius, type } from './themes/theme';
 import { initDatabase } from './database/db';
 
 import {
-  LogScreen,
-  LiftsScreen,
   FastingScreen,
+  StrengthScreen,
+  WeightScreen,
 } from './askesis/screens';
 import { SettingsScreen } from './settings/settings-screen';
 import { StudyScreen } from './the-study/study';
+import { VadeMecumScreen } from './vade-mecum/vade-mecum';
 
-type AppId = 'home' | 'study' | 'askesis' | 'settings';
-type AskesisTab = 'log' | 'lifts' | 'fasting';
+import {
+  useFonts,
+  EBGaramond_400Regular,
+  EBGaramond_500Medium,
+  EBGaramond_600SemiBold,
+  EBGaramond_700Bold,
+  EBGaramond_400Regular_Italic,
+} from '@expo-google-fonts/eb-garamond';
+
+type AppId = 'home' | 'study' | 'vade-mecum' | 'askesis' | 'settings';
+type AskesisTab = 'fasting' | 'strength' | 'weight';
 
 const ASKESIS_TABS: { key: AskesisTab; label: string }[] = [
-  { key: 'log', label: 'Log' },
-  { key: 'lifts', label: 'Lifts' },
   { key: 'fasting', label: 'Fasting' },
+  { key: 'strength', label: 'Strength' },
+  { key: 'weight', label: 'Weight' },
 ];
 
-export default function App() {
+function MainContent() {
   const c = useTheme();
   const [ready, setReady] = useState(false);
   const [currentApp, setCurrentApp] = useState<AppId>('home');
-  const [askesisTab, setAskesisTab] = useState<AskesisTab>('log');
+  const [askesisTab, setAskesisTab] = useState<AskesisTab>('fasting');
+
+  const [fontsLoaded] = useFonts({
+    EBGaramond_400Regular,
+    EBGaramond_500Medium,
+    EBGaramond_600SemiBold,
+    EBGaramond_700Bold,
+    EBGaramond_400Regular_Italic,
+  });
 
   useEffect(() => {
     initDatabase().then(() => setReady(true));
   }, []);
 
-  if (!ready) {
+  useEffect(() => {
+    const onBackPress = () => {
+      if (currentApp !== 'home') {
+        setCurrentApp('home');
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backHandler.remove();
+  }, [currentApp]);
+
+  if (!ready || !fontsLoaded) {
     return (
       <View
         style={[
@@ -77,9 +109,9 @@ export default function App() {
           <Text
             style={{
               color: c.textSecondary,
-              fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-              fontSize: 12,
-              letterSpacing: 1,
+              fontFamily: 'EBGaramond_400Regular',
+              fontSize: 12.6,
+              letterSpacing: .51,
               textAlign: 'center',
               marginBottom: spacing.xl,
             }}
@@ -87,7 +119,7 @@ export default function App() {
             UNA SALUS VICTIS · NULLAM SPERARE SALUTEM
           </Text>
 
-          {/* App Card 1: The Study (Placed above Askesis) */}
+          {/* App Card 1: The Study */}
           <Pressable
             onPress={() => setCurrentApp('study')}
             style={({ pressed }) => [
@@ -99,16 +131,35 @@ export default function App() {
               },
             ]}
           >
-            <View style={[styles.appIcon, { backgroundColor: c.surface }]}>
-              <Text style={{ fontSize: 24 }}>📜</Text>
-            </View>
             <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={[type.title, { color: c.text, fontSize: 18 }]}>The Study</Text>
+              <Text style={{ fontFamily: 'EBGaramond_600SemiBold', fontSize: 21, color: c.text }}>
+                The Study
+              </Text>
             </View>
             <Text style={[type.body, { color: c.textSecondary, fontSize: 20 }]}>›</Text>
           </Pressable>
 
-          {/* App Card 2: Askesis */}
+          {/* App Card 2: Vade Mecum */}
+          <Pressable
+            onPress={() => setCurrentApp('vade-mecum')}
+            style={({ pressed }) => [
+              styles.appCard,
+              {
+                backgroundColor: c.card,
+                borderColor: c.separator,
+                opacity: pressed ? 0.75 : 1,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={{ fontFamily: 'EBGaramond_600SemiBold', fontSize: 21, color: c.text }}>
+                Vade Mecum
+              </Text>
+            </View>
+            <Text style={[type.body, { color: c.textSecondary, fontSize: 20 }]}>›</Text>
+          </Pressable>
+
+          {/* App Card 3: Askesis */}
           <Pressable
             onPress={() => setCurrentApp('askesis')}
             style={({ pressed }) => [
@@ -120,16 +171,15 @@ export default function App() {
               },
             ]}
           >
-            <View style={[styles.appIcon, { backgroundColor: c.surface }]}>
-              <Text style={{ fontSize: 24 }}>🪽</Text>
-            </View>
             <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={[type.title, { color: c.text, fontSize: 18 }]}>Askesis</Text>
+              <Text style={{ fontFamily: 'EBGaramond_600SemiBold', fontSize: 21, color: c.text }}>
+                Askesis
+              </Text>
             </View>
             <Text style={[type.body, { color: c.textSecondary, fontSize: 20 }]}>›</Text>
           </Pressable>
 
-          {/* App Card 3: Settings */}
+          {/* App Card 4: Settings */}
           <Pressable
             onPress={() => setCurrentApp('settings')}
             style={({ pressed }) => [
@@ -141,9 +191,6 @@ export default function App() {
               },
             ]}
           >
-            <View style={[styles.appIcon, { backgroundColor: c.surface }]}>
-              <Text style={{ fontSize: 24 }}>⚙️</Text>
-            </View>
             <View style={{ flex: 1, marginLeft: spacing.md }}>
               <Text style={[type.title, { color: c.text, fontSize: 18 }]}>Settings</Text>
             </View>
@@ -157,6 +204,11 @@ export default function App() {
   // Inside The Study Container
   if (currentApp === 'study') {
     return <StudyScreen onBack={() => setCurrentApp('home')} />;
+  }
+
+  // Inside Vade Mecum Container
+  if (currentApp === 'vade-mecum') {
+    return <VadeMecumScreen onBack={() => setCurrentApp('home')} />;
   }
 
   // Inside Settings Container
@@ -180,7 +232,7 @@ export default function App() {
             style={styles.backButton}
             hitSlop={8}
           >
-            <Text style={[type.bodyMedium, { color: c.text }]}>‹ Pallas</Text>
+            <Text style={{ fontFamily: 'EBGaramond_500Medium', fontSize: 17, color: c.text }}>‹ Pallas</Text>
           </Pressable>
           <Text style={[type.bodyMedium, { color: c.textSecondary, fontWeight: '600' }]}>
             Settings
@@ -220,7 +272,7 @@ export default function App() {
           style={styles.backButton}
           hitSlop={8}
         >
-          <Text style={[type.bodyMedium, { color: c.text }]}>‹ Pallas</Text>
+          <Text style={{ fontFamily: 'EBGaramond_500Medium', fontSize: 17, color: c.text }}>‹ Pallas</Text>
         </Pressable>
         <Text style={[type.bodyMedium, { color: c.textSecondary, fontWeight: '600' }]}>
           Askesis
@@ -229,9 +281,9 @@ export default function App() {
       </View>
 
       <View style={styles.content}>
-        {askesisTab === 'log' && <LogScreen />}
-        {askesisTab === 'lifts' && <LiftsScreen />}
         {askesisTab === 'fasting' && <FastingScreen />}
+        {askesisTab === 'strength' && <StrengthScreen />}
+        {askesisTab === 'weight' && <WeightScreen />}
       </View>
 
       <View
@@ -268,6 +320,14 @@ export default function App() {
         ))}
       </View>
     </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MainContent />
+    </SafeAreaProvider>
   );
 }
 
