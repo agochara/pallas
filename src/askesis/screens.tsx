@@ -12,13 +12,15 @@ import {
   Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useTheme, spacing, radius, type, Colors } from './theme';
+import { useTheme, spacing, radius, type, Colors } from '../themes/theme';
 import {
   Exercise,
   EXERCISES,
   LiftRecord,
   Fast,
   insertLift,
+  setLift,
+  deleteLift,
   getActiveFast,
   startFast,
   endFast,
@@ -27,11 +29,7 @@ import {
   deleteFast,
   getFastHistory,
   getMaxLift,
-  deleteAllLifts,
-  deleteAllFasts,
-  deleteEverything,
-} from './db';
-import { exportFitLog, importFitLog } from './export';
+} from '../database/db';
 
 // ---------- formatting helpers ----------
 
@@ -81,123 +79,57 @@ function fmtWeight(w: number): string {
 
 // ---------- date / calendar helpers ----------
 
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
+function getDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-function addMonths(d: Date, n: number): Date {
-  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+function getPast7Days(offsetWeeks: number = 0): Date[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const end = new Date(today);
+  end.setDate(today.getDate() + offsetWeeks * 7);
+
+  const days: Date[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(end);
+    d.setDate(end.getDate() - i);
+    days.push(d);
+  }
+  return days;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
+function formatDateRange(days: Date[]): string {
+  if (days.length === 0) return '';
+  const first = days[0];
+  const last = days[days.length - 1];
 
-function dayFloor(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
+  const firstMonth = first.toLocaleDateString(undefined, { month: 'short' });
+  const lastMonth = last.toLocaleDateString(undefined, { month: 'short' });
 
-function daysBetween(a: Date, b: Date): number {
-  return Math.round((dayFloor(b).getTime() - dayFloor(a).getTime()) / 86400000);
-}
-
-type GridCell = { date: Date; inMonth: boolean };
-
-// Builds a 7-wide grid of full weeks covering the month, using real dates
-// (not nulls) for the lead-in/trail-off days so fast spans that touch the
-// edge of the month still render correctly on those cells.
-function buildMonthGrid(month: Date): GridCell[][] {
-  const first = startOfMonth(month);
-  const startWeekday = first.getDay(); // 0 = Sunday
-  const daysInMonth = new Date(
-    month.getFullYear(),
-    month.getMonth() + 1,
-    0
-  ).getDate();
-  const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
-
-  const gridStart = new Date(first);
-  gridStart.setDate(gridStart.getDate() - startWeekday);
-
-  const cells: GridCell[] = [];
-  for (let i = 0; i < totalCells; i++) {
-    const d = new Date(gridStart);
-    d.setDate(gridStart.getDate() + i);
-    cells.push({ date: d, inMonth: d.getMonth() === month.getMonth() });
+  if (first.getFullYear() !== last.getFullYear()) {
+    return `${firstMonth} ${first.getDate()} '${String(first.getFullYear()).slice(-2)} – ${lastMonth} ${last.getDate()} '${String(last.getFullYear()).slice(-2)}`;
   }
 
-  const weeks: GridCell[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
-}
-
-type FastSpan = { startDay: Date; endDay: Date; hours: number; fast: Fast };
-
-// A fast's pill covers every whole calendar day it touches, from the day it
-// started to the day it ended — the full duration is the pill's duration,
-// never split or summed with anything else (a moment-at-midnight end doesn't
-// count as touching that day).
-function fastSpanOf(fast: Fast): FastSpan | null {
-  if (!fast.end_time) return null;
-  const start = new Date(fast.start_time);
-  const end = new Date(fast.end_time);
-  const hours = (end.getTime() - start.getTime()) / 3600000;
-  if (hours <= 0) return null;
-  const lastTouched = new Date(end.getTime() - 1);
-  return { startDay: dayFloor(start), endDay: dayFloor(lastTouched), hours, fast };
-}
-
-function buildFastSpans(fasts: Fast[]): FastSpan[] {
-  const spans: FastSpan[] = [];
-  for (const f of fasts) {
-    const span = fastSpanOf(f);
-    if (span) spans.push(span);
+  if (firstMonth !== lastMonth) {
+    return `${firstMonth} ${first.getDate()} – ${lastMonth} ${last.getDate()}`;
   }
-  return spans;
+
+  return `${firstMonth} ${first.getDate()} – ${last.getDate()}`;
 }
 
-type WeekSegment = { colStart: number; colEnd: number; hours: number; fast: Fast; lane: number };
+function getFastsForDay(d: Date, fasts: Fast[]): Fast[] {
+  const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).getTime();
+  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
 
-// Clips each span to the columns (0-6) it occupies within this specific week.
-function segmentsForWeek(weekDates: Date[], spans: FastSpan[]): Omit<WeekSegment, 'lane'>[] {
-  const weekStart = weekDates[0];
-  const weekEnd = weekDates[6];
-  const segs: Omit<WeekSegment, 'lane'>[] = [];
-  for (const s of spans) {
-    if (s.endDay < weekStart || s.startDay > weekEnd) continue;
-    const clampedStart = s.startDay < weekStart ? weekStart : s.startDay;
-    const clampedEnd = s.endDay > weekEnd ? weekEnd : s.endDay;
-    segs.push({
-      colStart: daysBetween(weekStart, clampedStart),
-      colEnd: daysBetween(weekStart, clampedEnd),
-      hours: s.hours,
-      fast: s.fast,
-    });
-  }
-  return segs;
-}
-
-// Greedy lane assignment so same-day fasts stack instead of overlapping
-// (two fasts rarely touch the same day, but it can happen).
-function assignLanes(segs: Omit<WeekSegment, 'lane'>[]): WeekSegment[] {
-  const sorted = [...segs].sort((a, b) => a.colStart - b.colStart);
-  const laneEnds: number[] = [];
-  const result: WeekSegment[] = [];
-  for (const seg of sorted) {
-    let lane = laneEnds.findIndex((end) => end < seg.colStart);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(seg.colEnd);
-    } else {
-      laneEnds[lane] = seg.colEnd;
-    }
-    result.push({ ...seg, lane });
-  }
-  return result;
+  return fasts.filter((f) => {
+    if (!f.end_time) return false;
+    const endMs = new Date(f.end_time).getTime();
+    return endMs >= startOfDay && endMs <= endOfDay;
+  });
 }
 
 const LIGHT_GREEN: [number, number, number] = [168, 230, 161];
@@ -844,105 +776,6 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-const PILL_HEIGHT = 26;
-const PILL_GAP = 4;
-const NUMBER_ROW_HEIGHT = 20;
-
-// One week: a row of day numbers, then a lane area underneath where each
-// fast is a single continuous pill spanning every day column it touches
-// (clipped to this week if the fast crosses into the next one).
-function WeekRow({
-  week,
-  spans,
-  today,
-  onSelectFast,
-}: {
-  week: GridCell[];
-  spans: FastSpan[];
-  today: Date;
-  onSelectFast: (fast: Fast) => void;
-}) {
-  const c = useTheme();
-  const weekDates = week.map((cell) => cell.date);
-  const segs = assignLanes(segmentsForWeek(weekDates, spans));
-  const laneCount = segs.length === 0 ? 1 : Math.max(...segs.map((s) => s.lane + 1));
-  const lanesHeight = laneCount * PILL_HEIGHT + (laneCount - 1) * PILL_GAP;
-
-  return (
-    <View style={{ marginBottom: spacing.sm }}>
-      <View style={{ flexDirection: 'row', height: NUMBER_ROW_HEIGHT }}>
-        {week.map((cell, i) => {
-          const isToday = isSameDay(cell.date, today);
-          return (
-            <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              <View
-                style={
-                  isToday
-                    ? { backgroundColor: c.accent, borderRadius: 9, paddingHorizontal: 6 }
-                    : undefined
-                }
-              >
-                <Text
-                  style={[
-                    type.caption,
-                    {
-                      color: isToday ? c.accentText : c.text,
-                      opacity: cell.inMonth ? 1 : 0.35,
-                    },
-                  ]}
-                >
-                  {cell.date.getDate()}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-
-      <View style={{ height: lanesHeight, marginTop: 4 }}>
-        {segs.map((seg, i) => {
-          const leftPct = (seg.colStart / 7) * 100;
-          const widthPct = ((seg.colEnd - seg.colStart + 1) / 7) * 100;
-          const bg = hoursToColor(seg.hours, c.separator);
-          return (
-            <Pressable
-              key={i}
-              onPress={() => onSelectFast(seg.fast)}
-              style={{
-                position: 'absolute',
-                left: `${leftPct}%`,
-                width: `${widthPct}%`,
-                top: seg.lane * (PILL_HEIGHT + PILL_GAP),
-                height: PILL_HEIGHT,
-                paddingHorizontal: 2,
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: bg,
-                  borderRadius: PILL_HEIGHT / 2,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text
-                  style={[type.caption, { color: '#fff', fontWeight: '600' }]}
-                  numberOfLines={1}
-                >
-                  {Math.round(seg.hours)}h
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Month view, Zero-style: fasts render as spanning pills across the days
-// they touch rather than tinting a single cell.
 function FastCalendar({
   fasts,
   onSelectFast,
@@ -951,69 +784,210 @@ function FastCalendar({
   onSelectFast: (fast: Fast) => void;
 }) {
   const c = useTheme();
-  const [month, setMonth] = useState(startOfMonth(new Date()));
+  const [offsetWeeks, setOffsetWeeks] = useState(0);
 
-  const weeks = buildMonthGrid(month);
-  const spans = buildFastSpans(fasts);
-  const today = new Date();
+  const days = getPast7Days(offsetWeeks);
+  const dateRangeLabel = formatDateRange(days);
 
-  const monthHours = spans
-    .filter(
-      (s) =>
-        s.startDay.getFullYear() === month.getFullYear() &&
-        s.startDay.getMonth() === month.getMonth()
-    )
-    .reduce((sum, s) => sum + s.hours, 0);
+  // Collect data for each of the 7 days
+  const dayData = days.map((d) => {
+    const dayFasts = getFastsForDay(d, fasts);
+    const totalHours = dayFasts.reduce((sum, f) => {
+      const startMs = new Date(f.start_time).getTime();
+      const endMs = new Date(f.end_time!).getTime();
+      return sum + Math.max(0, (endMs - startMs) / 3600000);
+    }, 0);
+    const primaryFast = dayFasts[0] ?? null;
+    return {
+      date: d,
+      hours: totalHours,
+      fasts: dayFasts,
+      primaryFast,
+    };
+  });
+
+  // Calculate average for the week across completed fasts
+  const allWeekFasts = dayData.flatMap((d) => d.fasts);
+  const totalWeekHours = dayData.reduce((sum, d) => sum + d.hours, 0);
+  const avgHours = allWeekFasts.length > 0 ? totalWeekHours / allWeekFasts.length : 0;
+  const avgText = allWeekFasts.length > 0 ? formatHM(avgHours * 3600000) : '--';
+
+  // Calculate Y-axis scaling
+  const maxDayHours = Math.max(...dayData.map((d) => d.hours), 0);
+  const maxY = maxDayHours > 24 ? Math.ceil(maxDayHours / 6) * 6 : 24;
+  const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
+
+  const BAR_AREA_HEIGHT = 130;
 
   return (
     <Card style={{ marginBottom: spacing.lg }}>
+      {/* Header with Average and Date Range Navigation */}
       <View
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: spacing.sm,
+          alignItems: 'flex-start',
+          marginBottom: spacing.lg,
         }}
       >
-        <Pressable onPress={() => setMonth(addMonths(month, -1))} hitSlop={8}>
-          <Text style={[type.title, { color: c.text }]}>‹</Text>
-        </Pressable>
-        <Text style={[type.body, { color: c.text, fontWeight: '600' }]}>
-          {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-        </Text>
-        <Pressable onPress={() => setMonth(addMonths(month, 1))} hitSlop={8}>
-          <Text style={[type.title, { color: c.text }]}>›</Text>
-        </Pressable>
+        <View>
+          <Text style={[type.caption, { color: c.textSecondary, marginBottom: 2 }]}>
+            Average
+          </Text>
+          <Text style={{ color: c.text, fontSize: 26, fontWeight: '700' }}>
+            {avgText}
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 4 }}>
+          <Pressable
+            onPress={() => setOffsetWeeks((w) => w - 1)}
+            hitSlop={10}
+            style={{ paddingHorizontal: 4 }}
+          >
+            <Text style={{ color: c.textSecondary, fontSize: 22, lineHeight: 24 }}>‹</Text>
+          </Pressable>
+          <Text style={[type.bodyMedium, { color: c.text, fontWeight: '600', marginHorizontal: 4 }]}>
+            {dateRangeLabel}
+          </Text>
+          <Pressable
+            onPress={() => setOffsetWeeks((w) => Math.min(0, w + 1))}
+            disabled={offsetWeeks >= 0}
+            hitSlop={10}
+            style={{ paddingHorizontal: 4 }}
+          >
+            <Text
+              style={{
+                color: offsetWeeks >= 0 ? c.separator : c.textSecondary,
+                fontSize: 22,
+                lineHeight: 24,
+              }}
+            >
+              ›
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      <Text
-        style={[
-          type.caption,
-          { color: c.textSecondary, textAlign: 'right', marginBottom: spacing.xs },
-        ]}
+      {/* Chart Section */}
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', marginBottom: spacing.md }}>
+        {/* Y-Axis Labels */}
+        <View
+          style={{
+            width: 28,
+            height: BAR_AREA_HEIGHT,
+            marginTop: 20,
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            paddingRight: 4,
+          }}
+        >
+          {yTicks.map((tick, i) => (
+            <Text
+              key={i}
+              style={{
+                fontSize: 10,
+                color: c.textSecondary,
+                fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+              }}
+            >
+              {tick}h
+            </Text>
+          ))}
+        </View>
+
+        {/* 7-Day Vertical Bars */}
+        <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
+          {dayData.map((d, i) => {
+            const barHeight =
+              d.hours > 0 ? Math.min(BAR_AREA_HEIGHT, Math.max(6, (d.hours / maxY) * BAR_AREA_HEIGHT)) : 0;
+            const barColor = hoursToColor(d.hours, c.separator);
+            const dateStr = `${d.date.getMonth() + 1}/${d.date.getDate() < 10 ? '0' : ''}${d.date.getDate()}`;
+
+            return (
+              <Pressable
+                key={i}
+                onPress={() => {
+                  if (d.primaryFast) {
+                    onSelectFast(d.primaryFast);
+                  }
+                }}
+                disabled={!d.primaryFast}
+                style={{ flex: 1, alignItems: 'center' }}
+              >
+                {/* Duration above bar */}
+                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: d.hours > 0 ? '700' : '400',
+                      color: d.hours > 0 ? c.text : c.textSecondary,
+                    }}
+                  >
+                    {d.hours > 0 ? `${Math.round(d.hours)}h` : '0h'}
+                  </Text>
+                </View>
+
+                {/* Vertical Bar & Background Track */}
+                <View
+                  style={{
+                    height: BAR_AREA_HEIGHT,
+                    width: 14,
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  {/* Full height vertical track guideline */}
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      width: 1.5,
+                      backgroundColor: c.separator,
+                      opacity: 0.35,
+                    }}
+                  />
+
+                  {/* Filled bar pill */}
+                  {d.hours > 0 && (
+                    <View
+                      style={{
+                        width: 10,
+                        height: barHeight,
+                        borderRadius: 5,
+                        backgroundColor: barColor,
+                      }}
+                    />
+                  )}
+                </View>
+
+                {/* Date label under bar */}
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: c.textSecondary,
+                    marginTop: 6,
+                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                  }}
+                >
+                  {dateStr}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Legend */}
+      <View
+        style={{
+          flexDirection: 'row',
+          marginTop: spacing.sm,
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
       >
-        {Math.round(monthHours)}h total
-      </Text>
-
-      <View style={{ flexDirection: 'row' }}>
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[type.caption, { color: c.textSecondary }]}>{d}</Text>
-          </View>
-        ))}
-      </View>
-
-      {weeks.map((week, wi) => (
-        <WeekRow
-          key={wi}
-          week={week}
-          spans={spans}
-          today={today}
-          onSelectFast={onSelectFast}
-        />
-      ))}
-
-      <View style={{ flexDirection: 'row', marginTop: spacing.md, flexWrap: 'wrap' }}>
         <LegendDot color={c.separator} label="< 12h" />
         <LegendDot color="rgb(168, 230, 161)" label="12h+" />
         <LegendDot color="rgb(56, 142, 60)" label="16h+" />
@@ -1023,12 +997,122 @@ function FastCalendar({
   );
 }
 
+function EditLiftModal({
+  visible,
+  exercise,
+  currentRecord,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  exercise: Exercise | null;
+  currentRecord: LiftRecord | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const c = useTheme();
+  const [weight, setWeight] = useState('');
+  const [reps, setReps] = useState('');
+
+  useEffect(() => {
+    if (visible && exercise) {
+      setWeight(currentRecord ? `${currentRecord.weight}` : '');
+      setReps(currentRecord ? `${currentRecord.reps}` : '');
+    }
+  }, [visible, exercise, currentRecord]);
+
+  async function handleSave() {
+    if (!exercise) return;
+    const w = parseFloat(weight);
+    const r = parseInt(reps, 10);
+    if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) {
+      Alert.alert('Invalid input', 'Please enter valid numbers for weight and reps.');
+      return;
+    }
+    await setLift(exercise, w, r);
+    onSaved();
+    onClose();
+  }
+
+  async function handleDelete() {
+    if (!exercise) return;
+    Alert.alert(
+      'Clear Record?',
+      `Clear the max lift record for ${exercise}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLift(exercise);
+            onSaved();
+            onClose();
+          },
+        },
+      ]
+    );
+  }
+
+  if (!exercise) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalWrap}
+      >
+        <View style={[styles.sheet, { backgroundColor: c.background }]}>
+          <View style={styles.sheetHeaderRow}>
+            <Text style={[type.title, { color: c.text }]}>
+              {exercise.toUpperCase()}
+            </Text>
+            <Pressable onPress={onClose}>
+              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
+            </Pressable>
+          </View>
+
+          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
+            Weight (kg)
+          </Text>
+          <TextInput
+            value={weight}
+            onChangeText={setWeight}
+            keyboardType="decimal-pad"
+            style={[styles.input, { color: c.text, borderColor: c.separator }]}
+          />
+
+          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
+            Reps
+          </Text>
+          <TextInput
+            value={reps}
+            onChangeText={setReps}
+            keyboardType="number-pad"
+            style={[styles.input, { color: c.text, borderColor: c.separator }]}
+          />
+
+          <View style={{ marginTop: spacing.lg }}>
+            <PrimaryButton label="SAVE" onPress={handleSave} />
+            {currentRecord && (
+              <View style={{ marginTop: spacing.sm }}>
+                <DangerButton label="CLEAR RECORD" onPress={handleDelete} />
+              </View>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ---------- Lifts Screen ----------
 
 export function LiftsScreen() {
   const c = useTheme();
   const [maxLifts, setMaxLifts] =
     useState<Record<Exercise, LiftRecord | null> | null>(null);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
 
   const load = useCallback(async () => {
     const entries = await Promise.all(
@@ -1068,39 +1152,52 @@ export function LiftsScreen() {
         const rec = maxLifts?.[ex];
 
         return (
-          <Card key={ex} style={{ marginBottom: spacing.md }}>
-            <Text style={[type.title, { color: c.text }]}>
-              {ex.toUpperCase()}
-            </Text>
+          <Pressable key={ex} onPress={() => setEditingExercise(ex)}>
+            <Card style={{ marginBottom: spacing.md }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={[type.title, { color: c.text }]}>
+                  {ex.toUpperCase()}
+                </Text>
+                <Text style={[type.caption, { color: c.textSecondary }]}>Edit ›</Text>
+              </View>
 
-            {rec ? (
-              <Text
-                style={[
-                  type.body,
-                  {
-                    color: c.text,
-                    marginTop: spacing.xs,
-                  },
-                ]}
-              >
-                {fmtWeight(rec.weight)} kg × {rec.reps}
-              </Text>
-            ) : (
-              <Text
-                style={[
-                  type.caption,
-                  {
-                    color: c.textSecondary,
-                    marginTop: spacing.xs,
-                  },
-                ]}
-              >
-                No record yet
-              </Text>
-            )}
-          </Card>
+              {rec ? (
+                <Text
+                  style={[
+                    type.body,
+                    {
+                      color: c.text,
+                      marginTop: spacing.xs,
+                    },
+                  ]}
+                >
+                  {fmtWeight(rec.weight)} kg × {rec.reps}
+                </Text>
+              ) : (
+                <Text
+                  style={[
+                    type.caption,
+                    {
+                      color: c.textSecondary,
+                      marginTop: spacing.xs,
+                    },
+                  ]}
+                >
+                  No record yet · Tap to set
+                </Text>
+              )}
+            </Card>
+          </Pressable>
         );
       })}
+
+      <EditLiftModal
+        visible={!!editingExercise}
+        exercise={editingExercise}
+        currentRecord={editingExercise ? maxLifts?.[editingExercise] ?? null : null}
+        onClose={() => setEditingExercise(null)}
+        onSaved={load}
+      />
     </ScrollView>
   );
 }
@@ -1215,240 +1312,14 @@ export function FastingScreen() {
   );
 }
 
-
-// ---------- Settings Screen ----------
-
-export function SettingsScreen() {
-  const c = useTheme();
-  const [working, setWorking] = useState(false);
-
-  async function handleExport() {
-    try {
-      setWorking(true);
-      await exportFitLog();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function handleImport() {
-    try {
-      setWorking(true);
-
-      const imported = await importFitLog();
-
-      if (imported) {
-        Alert.alert(
-          'Import complete',
-          'The backup has been merged with your existing data.'
-        );
-      }
-    } catch (error) {
-      console.error(error);
-
-      Alert.alert(
-        'Import failed',
-        'That file is not a valid FitLog backup.'
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  function confirmDelete(
-    title: string,
-    message: string,
-    action: () => Promise<void>
-  ) {
-    Alert.alert(
-      title,
-      message,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setWorking(true);
-              await action();
-
-              Alert.alert('Deleted', 'The data has been deleted.');
-            } catch (error) {
-              console.error(error);
-
-              Alert.alert(
-                'Error',
-                'Could not delete the data.'
-              );
-            } finally {
-              setWorking(false);
-            }
-          },
-        },
-      ]
-    );
-  }
-
-  return (
-    <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.screenPad}
-    >
-      <Text
-        style={[
-          type.largeTitle,
-          {
-            color: c.text,
-            marginBottom: spacing.lg,
-          },
-        ]}
-      >
-        Settings
-      </Text>
-
-      <Text
-        style={[
-          type.caption,
-          {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
-          },
-        ]}
-      >
-        DATA
-      </Text>
-
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={handleExport}
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
-        >
-          <Text style={[type.body, { color: c.text }]}>
-            Export data
-          </Text>
-
-          <Text
-            style={[
-              type.caption,
-              {
-                color: c.textSecondary,
-                marginTop: 3,
-              },
-            ]}
-          >
-            Save a backup of your FitLog data
-          </Text>
-        </Pressable>
-      </Card>
-
-      <Card style={{ marginBottom: spacing.lg }}>
-        <Pressable
-          onPress={handleImport}
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
-        >
-          <Text style={[type.body, { color: c.text }]}>
-            Import data
-          </Text>
-
-          <Text
-            style={[
-              type.caption,
-              {
-                color: c.textSecondary,
-                marginTop: 3,
-              },
-            ]}
-          >
-            Merge a FitLog backup with this device
-          </Text>
-        </Pressable>
-      </Card>
-
-      <Text
-        style={[
-          type.caption,
-          {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
-          },
-        ]}
-      >
-        DELETE
-      </Text>
-
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete lift history?',
-              'All recorded lifts will be permanently deleted.',
-              deleteAllLifts
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
-        >
-          <Text style={[type.body, { color: c.text }]}>
-            Delete lift history
-          </Text>
-        </Pressable>
-      </Card>
-
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete fasting history?',
-              'All recorded fasts will be permanently deleted.',
-              deleteAllFasts
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
-        >
-          <Text style={[type.body, { color: c.text }]}>
-            Delete fasting history
-          </Text>
-        </Pressable>
-      </Card>
-
-      <Card>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete everything?',
-              'All lifts and fasting records will be permanently deleted.',
-              deleteEverything
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
-        >
-          <Text style={[type.body, { color: c.text }]}>
-            Delete everything
-          </Text>
-        </Pressable>
-      </Card>
-    </ScrollView>
-  );
-}
-
 // ---------- styles ----------
 
 const styles = StyleSheet.create({
   screenPad: {
-  paddingHorizontal: spacing.lg,
-  paddingTop: spacing.xl + spacing.md,
-  paddingBottom: spacing.xl * 2,
-},
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+  },
   primaryButton: {
     paddingVertical: spacing.md,
     borderRadius: radius.sm,

@@ -25,10 +25,19 @@ export type Fast = {
   end_time: string | null;
 };
 
+export type NewsletterState = {
+  id: number;
+  issue_number: number;
+  to_self_text: string;
+  last_issue_date: string | null;
+  archive_quote_1: string | null;
+  archive_quote_2: string | null;
+};
+
 let db: SQLite.SQLiteDatabase | null = null;
 
 export async function initDatabase(): Promise<void> {
-  db = await SQLite.openDatabaseAsync('fitlog.db');
+  db = await SQLite.openDatabaseAsync('pallas.db');
 
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -44,6 +53,18 @@ export async function initDatabase(): Promise<void> {
       start_time TEXT NOT NULL,
       end_time TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS newsletter_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      issue_number INTEGER NOT NULL DEFAULT 33,
+      to_self_text TEXT NOT NULL DEFAULT '',
+      last_issue_date TEXT,
+      archive_quote_1 TEXT,
+      archive_quote_2 TEXT
+    );
+
+    INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text)
+    VALUES (1, 33, '');
   `);
 }
 
@@ -74,6 +95,26 @@ export async function insertLift(
       (exercise, weight, reps)
      VALUES (?, ?, ?)`,
     [exercise, weight, reps]
+  );
+}
+
+export async function setLift(
+  exercise: Exercise,
+  weight: number,
+  reps: number,
+): Promise<void> {
+  await getDb().runAsync(
+    `INSERT OR REPLACE INTO max_lifts
+      (exercise, weight, reps)
+     VALUES (?, ?, ?)`,
+    [exercise, weight, reps]
+  );
+}
+
+export async function deleteLift(exercise: Exercise): Promise<void> {
+  await getDb().runAsync(
+    `DELETE FROM max_lifts WHERE exercise = ?`,
+    [exercise]
   );
 }
 
@@ -170,11 +211,16 @@ export async function exportDatabaseData() {
      ORDER BY start_time ASC, id ASC`
   );
 
+  const study = await getDb().getFirstAsync<NewsletterState>(
+    `SELECT * FROM newsletter_settings WHERE id = 1`
+  );
+
   return {
-    version: 3,
+    version: 4,
     exported_at: new Date().toISOString(),
     lifts,
     fasts,
+    study: study ?? null,
   };
 }
 
@@ -183,6 +229,7 @@ export async function exportDatabaseData() {
 export async function importDatabaseData(data: {
   lifts: LiftRecord[];
   fasts: Fast[];
+  study?: NewsletterState | null;
 }): Promise<void> {
   const database = getDb();
 
@@ -205,7 +252,7 @@ export async function importDatabaseData(data: {
         await database.runAsync(
           `INSERT OR REPLACE INTO max_lifts
             (exercise, weight, reps)
-           VALUES (?, ?, ?, ?)`,
+           VALUES (?, ?, ?)`,
           [
             lift.exercise,
             lift.weight,
@@ -235,6 +282,22 @@ export async function importDatabaseData(data: {
         );
       }
     }
+
+    // Import study / newsletter state if provided.
+    if (data.study) {
+      await database.runAsync(
+        `INSERT OR REPLACE INTO newsletter_settings
+          (id, issue_number, to_self_text, last_issue_date, archive_quote_1, archive_quote_2)
+         VALUES (1, ?, ?, ?, ?, ?)`,
+        [
+          data.study.issue_number || 33,
+          data.study.to_self_text ?? '',
+          data.study.last_issue_date ?? null,
+          data.study.archive_quote_1 ?? null,
+          data.study.archive_quote_2 ?? null,
+        ]
+      );
+    }
   });
 }
 
@@ -252,5 +315,84 @@ export async function deleteEverything(): Promise<void> {
   await getDb().withTransactionAsync(async () => {
     await getDb().runAsync('DELETE FROM max_lifts');
     await getDb().runAsync('DELETE FROM fasts');
+    await getDb().runAsync('DELETE FROM newsletter_settings');
+    await getDb().runAsync(
+      `INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text) VALUES (1, 33, '')`
+    );
   });
+}
+
+// ---------- Direct SQL ----------
+
+export async function executeRawSql(sql: string): Promise<string> {
+  const database = getDb();
+  const trimmed = sql.trim();
+  const upper = trimmed.toUpperCase();
+
+  if (upper.startsWith('SELECT') || upper.startsWith('PRAGMA') || upper.startsWith('EXPLAIN')) {
+    const rows = await database.getAllAsync(trimmed);
+    return JSON.stringify(rows, null, 2);
+  }
+
+  await database.execAsync(trimmed);
+  return 'Query executed successfully.';
+}
+
+// ---------- Newsletter (The Study) ----------
+
+export async function getNewsletterState(): Promise<NewsletterState> {
+  const row = await getDb().getFirstAsync<NewsletterState>(
+    `SELECT * FROM newsletter_settings WHERE id = 1`
+  );
+  if (row) return row;
+
+  await getDb().runAsync(
+    `INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text) VALUES (1, 33, '')`
+  );
+  return {
+    id: 1,
+    issue_number: 33,
+    to_self_text: '',
+    last_issue_date: null,
+    archive_quote_1: null,
+    archive_quote_2: null,
+  };
+}
+
+export async function saveNewsletterSettings(settings: {
+  issue_number?: number;
+  to_self_text?: string;
+}): Promise<void> {
+  const current = await getNewsletterState();
+  const issueNumber = settings.issue_number ?? current.issue_number;
+  const toSelf =
+    settings.to_self_text !== undefined
+      ? settings.to_self_text
+      : current.to_self_text;
+
+  await getDb().runAsync(
+    `UPDATE newsletter_settings
+     SET issue_number = ?, to_self_text = ?
+     WHERE id = 1`,
+    [issueNumber, toSelf]
+  );
+}
+
+export async function saveDailyNewsletterEdition(edition: {
+  issue_number: number;
+  last_issue_date: string;
+  archive_quote_1: string;
+  archive_quote_2: string;
+}): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE newsletter_settings
+     SET issue_number = ?, last_issue_date = ?, archive_quote_1 = ?, archive_quote_2 = ?
+     WHERE id = 1`,
+    [
+      edition.issue_number,
+      edition.last_issue_date,
+      edition.archive_quote_1,
+      edition.archive_quote_2,
+    ]
+  );
 }

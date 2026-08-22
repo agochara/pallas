@@ -7,11 +7,11 @@ import {
   importDatabaseData,
 } from './db';
 
-export async function exportFitLog() {
+export async function exportPallasData() {
   const data = await exportDatabaseData();
 
   const json = JSON.stringify(data, null, 2);
-  const fileUri = FileSystem.cacheDirectory + 'fitlog-backup.json';
+  const fileUri = FileSystem.cacheDirectory + 'pallas-backup.json';
 
   await FileSystem.writeAsStringAsync(fileUri, json, {
     encoding: FileSystem.EncodingType.UTF8,
@@ -23,11 +23,11 @@ export async function exportFitLog() {
 
   await Sharing.shareAsync(fileUri, {
     mimeType: 'application/json',
-    dialogTitle: 'Export FitLog data',
+    dialogTitle: 'Export Pallas data',
   });
 }
 
-export async function importFitLog(): Promise<boolean> {
+export async function importPallasData(): Promise<boolean> {
   const result = await DocumentPicker.getDocumentAsync({
     type: 'application/json',
     copyToCacheDirectory: true,
@@ -50,10 +50,14 @@ export async function importFitLog(): Promise<boolean> {
     !Array.isArray(data.lifts) ||
     !Array.isArray(data.fasts)
   ) {
-    throw new Error('Invalid FitLog backup.');
+    throw new Error('Invalid Pallas backup.');
   }
 
   await importDatabaseData(data);
 
   return true;
 }
+
+// Aliases for backwards compatibility
+export const exportFitLog = exportPallasData;
+export const importFitLog = importPallasData;

@@ -1,7 +1,7 @@
 {
-  "name": "fitlog",
-  "version": "1.0.0",
-  "main": "node_modules/expo/AppEntry.js",
+  "name": "pallas",
+  "version": "2.0.0",
+  "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android"
