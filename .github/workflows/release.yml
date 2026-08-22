@@ -4,11 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Existing EAS build ID to reuse (skips a new EAS build)"
+        required: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
@@ -33,6 +37,7 @@ jobs:
 
       - name: Build APK
         id: build
+        if: ${{ github.event.inputs.build_id == '' }}
         run: |
           BUILD_ID=$(eas build \
             --platform android \
@@ -40,16 +45,23 @@ jobs:
             --non-interactive \
             --wait \
             --json | jq -r '.[0].id')
-
           echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build ID
+        id: resolve
+        run: |
+          if [ -n "${{ github.event.inputs.build_id }}" ]; then
+            echo "BUILD_ID=${{ github.event.inputs.build_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "BUILD_ID=${{ steps.build.outputs.BUILD_ID }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download APK
         run: |
-          eas build:download \
-            --build-id "${{ steps.build.outputs.BUILD_ID }}" \
-            --non-interactive
-
-          mv *.apk "Pallas-${{ github.ref_name }}.apk"
+          APK_PATH=$(eas build:download \
+            --build-id "${{ steps.resolve.outputs.BUILD_ID }}" \
+            --json | jq -r '.path')
+          cp "$APK_PATH" "Pallas-${{ github.ref_name }}.apk"
 
       - name: Create GitHub Release
         env:
