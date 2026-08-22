@@ -127,15 +127,39 @@ function formatDateRange(days: Date[]): string {
   return `${firstMonth} ${first.getDate()} – ${last.getDate()}`;
 }
 
-function getFastsForDay(d: Date, fasts: Fast[]): Fast[] {
-  const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0).getTime();
-  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
+function getFastingForDay(
+  d: Date,
+  fasts: Fast[]
+): { totalHours: number; fasts: Fast[]; primaryFast: Fast | null } {
+  const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
 
-  return fasts.filter((f) => {
-    if (!f.end_time) return false;
-    const endMs = new Date(f.end_time).getTime();
-    return endMs >= startOfDay && endMs <= endOfDay;
-  });
+  let totalMs = 0;
+  const overlapping: { fast: Fast; overlapMs: number }[] = [];
+
+  for (const f of fasts) {
+    if (!f.end_time) continue;
+    const fStart = new Date(f.start_time).getTime();
+    const fEnd = new Date(f.end_time).getTime();
+    if (isNaN(fStart) || isNaN(fEnd) || fEnd <= fStart) continue;
+
+    const overlapStart = Math.max(fStart, startOfDay);
+    const overlapEnd = Math.min(fEnd, endOfDay);
+    const overlap = Math.max(0, overlapEnd - overlapStart);
+
+    if (overlap > 0) {
+      totalMs += overlap;
+      overlapping.push({ fast: f, overlapMs: overlap });
+    }
+  }
+
+  overlapping.sort((a, b) => b.overlapMs - a.overlapMs);
+
+  return {
+    totalHours: totalMs / 3600000,
+    fasts: overlapping.map((o) => o.fast),
+    primaryFast: overlapping.length > 0 ? overlapping[0].fast : null,
+  };
 }
 
 const LIGHT_GREEN: [number, number, number] = [168, 230, 161];
@@ -373,9 +397,16 @@ function DateField({
       </Text>
       <Pressable
         onPress={() => setShowPicker(true)}
-        style={[styles.dateChip, { borderColor: c.separator, alignItems: 'flex-start' }]}
+        style={[
+          styles.input,
+          {
+            borderColor: c.separator,
+            justifyContent: 'center',
+            minHeight: 48,
+          },
+        ]}
       >
-        <Text style={[type.body, { color: c.text }]}>
+        <Text style={[type.body, { color: c.text, fontSize: 17 }]}>
           {dateObj.toLocaleDateString(undefined, {
             day: 'numeric',
             month: 'short',
@@ -1351,13 +1382,7 @@ function FastCalendar({
 
   // Collect data for each of the 7 days
   const dayData = days.map((d) => {
-    const dayFasts = getFastsForDay(d, fasts);
-    const totalHours = dayFasts.reduce((sum, f) => {
-      const startMs = new Date(f.start_time).getTime();
-      const endMs = new Date(f.end_time!).getTime();
-      return sum + Math.max(0, (endMs - startMs) / 3600000);
-    }, 0);
-    const primaryFast = dayFasts[0] ?? null;
+    const { totalHours, fasts: dayFasts, primaryFast } = getFastingForDay(d, fasts);
     return {
       date: d,
       hours: totalHours,
@@ -1366,11 +1391,11 @@ function FastCalendar({
     };
   });
 
-  // Calculate average for the week across completed fasts
-  const allWeekFasts = dayData.flatMap((d) => d.fasts);
+  // Calculate average across days with recorded fasting
+  const fastingDays = dayData.filter((d) => d.hours > 0);
   const totalWeekHours = dayData.reduce((sum, d) => sum + d.hours, 0);
-  const avgHours = allWeekFasts.length > 0 ? totalWeekHours / allWeekFasts.length : 0;
-  const avgText = allWeekFasts.length > 0 ? formatHM(avgHours * 3600000) : '--';
+  const avgHours = fastingDays.length > 0 ? totalWeekHours / fastingDays.length : 0;
+  const avgText = fastingDays.length > 0 ? formatHM(avgHours * 3600000) : '--';
 
   // Calculate Y-axis scaling
   const maxDayHours = Math.max(...dayData.map((d) => d.hours), 0);
@@ -1821,7 +1846,7 @@ export function FastingScreen() {
             </Text>
             <PrimaryButton label="    START FAST    " onPress={() => setShowStartFast(true)} />
             <View style={{ height: spacing.sm }} />
-            <SecondaryButton label="Enter fast manually" onPress={() => setShowManualFast(true)} />
+            <SecondaryButton label="  Enter fast manually  " onPress={() => setShowManualFast(true)} />
           </View>
         )}
       </Card>
