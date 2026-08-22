@@ -32,13 +32,24 @@ jobs:
         run: npm ci
 
       - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive --wait
+        id: build
+        run: |
+          BUILD_ID=$(eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --wait \
+            --json | jq -r '.[0].id')
+
+          echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download APK
-        run: eas build:download --platform android --non-interactive
+        run: |
+          eas build:download \
+            --build-id "${{ steps.build.outputs.BUILD_ID }}" \
+            --non-interactive
 
-      - name: Rename APK
-        run: mv *.apk "Pallas-${{ github.ref_name }}.apk"
+          mv *.apk "Pallas-${{ github.ref_name }}.apk"
 
       - name: Create GitHub Release
         env:
