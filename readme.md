@@ -193,3 +193,7 @@ eas build -p android --profile preview
 Pallas is not intended to record everything.
 
 It is intended to preserve what is worth preserving, and to make the things that matter easy to act upon.
+
+## Historical
+
+This project was named `logfit` before being renamed. The slug needs to remain `logfit` in order to accomodate Expo.
