@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Svg, { Line, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
-import { useTheme, spacing, radius, type, Colors } from '../themes/theme';
 import {
   Exercise,
   EXERCISES,
@@ -37,30 +36,33 @@ import {
   deleteWeight,
 } from '../database/db';
 
-// ---------- formatting helpers ----------
+import { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme } from '../themes/theme';
+import {
+  M3Card,
+  M3Pressable,
+  M3FilledButton,
+  M3TonalButton,
+  M3ErrorButton,
+  M3SegmentedButton,
+  M3BottomSheet,
+  M3TopAppBar,
+} from '../themes/m3-components';
+
+export { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme };
+export { M3Card, M3Pressable, M3FilledButton, M3TonalButton, M3ErrorButton, M3SegmentedButton, M3BottomSheet, M3TopAppBar };
+
+// ============================================================================
+// FORMATTING & CALENDAR TIME-SPLITTING HELPERS
+// ============================================================================
 
 function formatShortDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
 }
 
-function formatDateHeader(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'long' }).toUpperCase();
-}
-
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatFull(iso: string): string {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString(undefined, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })}, ${formatTime(iso)}`;
 }
 
 function formatHMS(ms: number): string {
@@ -80,17 +82,17 @@ function formatHM(ms: number): string {
 }
 
 function fmtWeight(w: number): string {
-  return Number.isInteger(w) ? `${w}` : `${w}`;
+  return `${w}`;
 }
 
-// ---------- date / calendar helpers ----------
-
-function getDayKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function hoursToM3Color(hours: number, emptyColor: string, m3: M3Theme): string {
+  if (hours === 0) return emptyColor;
+  if (hours >= 24) return m3.fasting24plus;
+  if (hours >= 16) return m3.fasting16to24;
+  if (hours >= 12) return m3.fasting12to16;
+  return m3.fastingUnder12;
 }
+
 
 function getPast7Days(offsetWeeks: number = 0): Date[] {
   const today = new Date();
@@ -162,115 +164,9 @@ function getFastingForDay(
   };
 }
 
-const LIGHT_GREEN: [number, number, number] = [168, 230, 161];
-const MID_GREEN: [number, number, number] = [56, 142, 60];
-const BLUE: [number, number, number] = [66, 133, 244];
 
-function lerp(a: number, b: number, t: number): number {
-  return Math.round(a + (b - a) * t);
-}
 
-function lerpColor(c1: [number, number, number], c2: [number, number, number], t: number): string {
-  return `rgb(${lerp(c1[0], c2[0], t)}, ${lerp(c1[1], c2[1], t)}, ${lerp(c1[2], c2[2], t)})`;
-}
-
-// Below 12h stays grey (emptyColor). 12h-16h ramps light->mid green,
-// 16h-24h ramps mid green->blue, 24h+ is solid blue.
-function hoursToColor(hours: number, emptyColor: string): string {
-  if (hours < 12) return emptyColor;
-  if (hours >= 24) return `rgb(${BLUE.join(',')})`;
-  if (hours < 16) {
-    const t = (hours - 12) / 4;
-    return lerpColor(LIGHT_GREEN, MID_GREEN, t);
-  }
-  const t = (hours - 16) / 8;
-  return lerpColor(MID_GREEN, BLUE, t);
-}
-
-// ---------- shared bits ----------
-
-function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  const c = useTheme();
-  return (
-    <View
-      style={[
-        { backgroundColor: c.card, borderRadius: radius.md, padding: spacing.md },
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-function PrimaryButton({
-  label,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  const c = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.primaryButton,
-        {
-          backgroundColor: c.accent,
-          opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
-        },
-      ]}
-    >
-      <Text style={[type.bodyMedium, { color: c.accentText }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
-  const c = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.secondaryButton,
-        { borderColor: c.separator, opacity: pressed ? 0.6 : 1 },
-      ]}
-    >
-      <Text style={[type.bodyMedium, { color: c.text }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function DangerButton({ label, onPress }: { label: string; onPress: () => void }) {
-  const c = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.secondaryButton,
-        { borderColor: '#D9534F', opacity: pressed ? 0.6 : 1 },
-      ]}
-    >
-      <Text style={[type.bodyMedium, { color: '#D9534F' }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  const c = useTheme();
-  return (
-    <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
-      <Text style={[type.body, { color: c.textSecondary }]}>{text}</Text>
-    </View>
-  );
-}
-
-// A tappable date + time pair backed by the native picker. Android shows
-// each as its own dialog on tap; iOS shows an inline/spinner picker below.
+// DateTime & Date Inputs
 function DateTimeField({
   label,
   value,
@@ -282,19 +178,19 @@ function DateTimeField({
   onChange: (d: Date) => void;
   maximumDate?: Date;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
 
   return (
-    <View style={{ marginTop: spacing.md }}>
-      <Text style={[type.caption, { color: c.textSecondary }]}>{label}</Text>
-      <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
+    <View style={{ marginTop: 14 }}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>{label}</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
         <Pressable
           onPress={() => setShowDate(true)}
-          style={[styles.dateChip, { borderColor: c.separator }]}
+          style={[styles.m3DateField, { flex: 1, backgroundColor: m3.surfaceContainerHighest }]}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurface }]}>
             {value.toLocaleDateString(undefined, {
               day: '2-digit',
               month: 'short',
@@ -304,9 +200,9 @@ function DateTimeField({
         </Pressable>
         <Pressable
           onPress={() => setShowTime(true)}
-          style={[styles.dateChip, { borderColor: c.separator, marginLeft: spacing.sm }]}
+          style={[styles.m3DateField, { flex: 1, backgroundColor: m3.surfaceContainerHighest }]}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurface }]}>
             {value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </Pressable>
@@ -346,8 +242,6 @@ function DateTimeField({
   );
 }
 
-// ---------- Weight Screen ----------
-
 function formatDateToIso(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -361,17 +255,6 @@ function parseDateStringToMs(dateStr: string): number {
   return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0).getTime();
 }
 
-function formatDisplayDate(dateStr: string): string {
-  const clean = dateStr.slice(0, 10);
-  const [y, m, d] = clean.split('-').map(Number);
-  const dateObj = new Date(y, (m || 1) - 1, d || 1);
-  return dateObj.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 function DateField({
   label = 'Date',
   value,
@@ -383,7 +266,7 @@ function DateField({
   onChange: (dateStr: string) => void;
   maximumDate?: Date;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [showPicker, setShowPicker] = useState(false);
 
   const clean = (value || formatDateToIso(new Date())).slice(0, 10);
@@ -391,22 +274,22 @@ function DateField({
   const dateObj = new Date(y, (m || 1) - 1, d || 1);
 
   return (
-    <View style={{ marginTop: spacing.md }}>
-      <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.xs }]}>
+    <View style={{ marginTop: 14 }}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant, marginBottom: 6 }]}>
         {label}
       </Text>
       <Pressable
         onPress={() => setShowPicker(true)}
         style={[
-          styles.input,
+          styles.m3DateField,
           {
-            borderColor: c.separator,
+            backgroundColor: m3.surfaceContainerHighest,
             justifyContent: 'center',
-            minHeight: 48,
+            minHeight: 52,
           },
         ]}
       >
-        <Text style={[type.body, { color: c.text, fontSize: 17 }]}>
+        <Text style={[m3Type.bodyMedium, { color: m3.onSurface }]}>
           {dateObj.toLocaleDateString(undefined, {
             day: 'numeric',
             month: 'short',
@@ -431,6 +314,10 @@ function DateField({
     </View>
   );
 }
+
+// ============================================================================
+// 1. WEIGHT MODULE (Material 3 Expressive)
+// ============================================================================
 
 type TimeRange = 'W' | 'M' | '3M' | 'Y';
 
@@ -549,7 +436,7 @@ function WeightTimeSeriesChart({
   window: TimeWindow;
   onSelectEntry: (entry: WeightEntry) => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [chartWidth, setChartWidth] = useState(320);
 
   const chartHeight = 180;
@@ -562,7 +449,6 @@ function WeightTimeSeriesChart({
   const drawHeight = chartHeight - padTop - padBottom;
   const timeSpan = window.endMs - window.startMs || 1;
 
-  // Filter entries in this window and map timestamps continuously
   const inWindow = entries
     .filter((e) => {
       const t = parseDateStringToMs(e.date);
@@ -570,7 +456,6 @@ function WeightTimeSeriesChart({
     })
     .sort((a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date));
 
-  // Determine Y-scale range
   const weightsInWindow = inWindow.map((e) => e.weight);
   const rawMin = weightsInWindow.length > 0 ? Math.min(...weightsInWindow) : 70;
   const rawMax = weightsInWindow.length > 0 ? Math.max(...weightsInWindow) : 80;
@@ -579,7 +464,6 @@ function WeightTimeSeriesChart({
   const maxW = Math.ceil(rawMax + pad);
   const yRange = maxW - minW || 1;
 
-  // Continuous time mapping: screen coordinates proportional to real date
   const mappedPoints = inWindow.map((e) => {
     const t = parseDateStringToMs(e.date);
     const xPct = Math.max(0, Math.min(1, (t - window.startMs) / timeSpan));
@@ -590,7 +474,6 @@ function WeightTimeSeriesChart({
 
   const polylinePoints = mappedPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 
-  // Y-axis ticks on the right
   const midW = Math.round((minW + maxW) / 2);
   const yTicks = [
     { value: maxW, y: padTop },
@@ -607,7 +490,6 @@ function WeightTimeSeriesChart({
       style={{ width: '100%', height: chartHeight }}
     >
       <Svg width={chartWidth} height={chartHeight}>
-        {/* Horizontal gridlines & Y-axis labels */}
         {yTicks.map((tick, i) => (
           <G key={i}>
             <Line
@@ -615,50 +497,58 @@ function WeightTimeSeriesChart({
               y1={tick.y}
               x2={chartWidth - padRight}
               y2={tick.y}
-              stroke={c.separator}
-              strokeDasharray={i === yTicks.length - 1 ? undefined : '3,4'}
+              stroke={m3.outlineVariant}
+              strokeDasharray={i === yTicks.length - 1 ? undefined : '4,4'}
               strokeWidth={i === yTicks.length - 1 ? '1.5' : '1'}
-              opacity={0.6}
             />
             <SvgText
               x={chartWidth - padRight + 6}
               y={tick.y + 4}
-              fill={c.textSecondary}
+              fill={m3.onSurfaceVariant}
               fontSize="10"
+              fontWeight="600"
               textAnchor="start"
-              fontFamily={Platform.OS === 'ios' ? 'Menlo' : 'monospace'}
             >
               {tick.value}
             </SvgText>
           </G>
         ))}
 
-        {/* Continuous Time-Series Line */}
         {mappedPoints.length >= 2 && (
           <Polyline
             points={polylinePoints}
             fill="none"
-            stroke={c.accent}
-            strokeWidth="2.5"
+            stroke={m3.tertiary}
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         )}
 
-        {/* Data Point Dots */}
         {mappedPoints.map((p, i) => (
-          <Circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r={mappedPoints.length > 30 ? 2.5 : 4}
-            fill={c.card}
-            stroke={c.accent}
-            strokeWidth="2"
-          />
+          <G key={i}>
+            {/* Expanded 48x48dp touch target */}
+            <Circle
+              cx={p.x}
+              cy={p.y}
+              r={24}
+              fill="transparent"
+              onPress={() => onSelectEntry(p.entry)}
+            />
+            {/* Visual point */}
+            <Circle
+              cx={p.x}
+              cy={p.y}
+              r={mappedPoints.length > 30 ? 3.5 : 5.5}
+              fill={m3.surfaceContainer}
+              stroke={m3.tertiary}
+              strokeWidth="2.5"
+              pointerEvents="none"
+            />
+          </G>
         ))}
 
-        {/* Adaptive X-Axis Labels positioned continuously by timestamp */}
+
         {window.ticks.map((tick, i) => {
           const xPct = Math.max(0, Math.min(1, (tick.timeMs - window.startMs) / timeSpan));
           const x = padLeft + xPct * drawWidth;
@@ -667,10 +557,10 @@ function WeightTimeSeriesChart({
               key={i}
               x={x}
               y={chartHeight - 6}
-              fill={c.textSecondary}
+              fill={m3.onSurfaceVariant}
               fontSize="10"
+              fontWeight="600"
               textAnchor="middle"
-              fontFamily={Platform.OS === 'ios' ? 'Menlo' : 'monospace'}
             >
               {tick.label}
             </SvgText>
@@ -690,7 +580,7 @@ function AddWeightModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [weight, setWeight] = useState('');
   const [date, setDate] = useState(formatDateToIso(new Date()));
 
@@ -714,45 +604,30 @@ function AddWeightModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>Log Weight</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
+    <M3BottomSheet visible={visible} title="Log Weight" onClose={onClose}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>Weight (kg)</Text>
+      <TextInput
+        value={weight}
+        onChangeText={setWeight}
+        placeholder="e.g. 78.5"
+        placeholderTextColor={m3.onSurfaceVariant}
+        keyboardType="decimal-pad"
+        autoFocus
+        style={[
+          styles.m3TextInput,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            color: m3.onSurface,
+          },
+        ]}
+      />
 
-          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
-            Weight (kg)
-          </Text>
-          <TextInput
-            value={weight}
-            onChangeText={setWeight}
-            placeholder="e.g. 78.5"
-            placeholderTextColor={c.textSecondary}
-            keyboardType="decimal-pad"
-            autoFocus
-            style={[styles.input, { color: c.text, borderColor: c.separator }]}
-          />
+      <DateField label="Date" value={date} onChange={setDate} maximumDate={new Date()} />
 
-          <DateField
-            label="Date"
-            value={date}
-            onChange={setDate}
-            maximumDate={new Date()}
-          />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="SAVE WEIGHT" onPress={handleSave} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      <View style={{ marginTop: 24 }}>
+        <M3FilledButton label="Save Weight" onPress={handleSave} />
+      </View>
+    </M3BottomSheet>
   );
 }
 
@@ -767,7 +642,7 @@ function EditWeightModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [weight, setWeight] = useState('');
   const [date, setDate] = useState(formatDateToIso(new Date()));
 
@@ -814,49 +689,33 @@ function EditWeightModal({
   if (!entry) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>Edit Weight</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
+    <M3BottomSheet visible={visible} title="Edit Weight" onClose={onClose}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>Weight (kg)</Text>
+      <TextInput
+        value={weight}
+        onChangeText={setWeight}
+        keyboardType="decimal-pad"
+        style={[
+          styles.m3TextInput,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            color: m3.onSurface,
+          },
+        ]}
+      />
 
-          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
-            Weight (kg)
-          </Text>
-          <TextInput
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-            style={[styles.input, { color: c.text, borderColor: c.separator }]}
-          />
+      <DateField label="Date" value={date} onChange={setDate} maximumDate={new Date()} />
 
-          <DateField
-            label="Date"
-            value={date}
-            onChange={setDate}
-            maximumDate={new Date()}
-          />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="SAVE" onPress={handleSave} />
-            <View style={{ height: spacing.sm }} />
-            <DangerButton label="DELETE MEASUREMENT" onPress={handleDelete} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      <View style={{ marginTop: 24, gap: 12 }}>
+        <M3FilledButton label="Save Changes" onPress={handleSave} />
+        <M3ErrorButton label="Delete Measurement" onPress={handleDelete} />
+      </View>
+    </M3BottomSheet>
   );
 }
 
 export function WeightScreen() {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [latestGlobalWeight, setLatestGlobalWeight] = useState<WeightEntry | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('Y');
@@ -876,19 +735,12 @@ export function WeightScreen() {
 
   const window = getTimeWindow(timeRange, rangeOffset);
 
-  // Filter entries within the current window
   const inWindow = weights
     .filter((e) => {
       const t = parseDateStringToMs(e.date);
       return t >= window.startMs && t <= window.endMs;
     })
     .sort((a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date));
-
-  // Metrics for period
-  const avgWeight =
-    inWindow.length > 0
-      ? inWindow.reduce((s, e) => s + e.weight, 0) / inWindow.length
-      : null;
 
   const firstInWindow = inWindow[0] ?? null;
   const lastInWindow = inWindow[inWindow.length - 1] ?? null;
@@ -923,143 +775,89 @@ export function WeightScreen() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.screenPad}
+      style={{ backgroundColor: m3.surface }}
+      contentContainerStyle={styles.m3ScreenPad}
+      showsVerticalScrollIndicator={false}
     >
-      {/* Title & Log Button Row */}
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: spacing.md,
-        }}
-      >
-        <Text style={[type.largeTitle, { color: c.text }]}>Weight</Text>
-        <Pressable
+      {/* Title & Log Pill Button */}
+      <View style={styles.m3TitleRow}>
+        <View>
+          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Weight</Text>
+        </View>
+
+        <M3Pressable
           onPress={() => setShowAdd(true)}
-          style={({ pressed }) => [
-            {
-              backgroundColor: c.accent,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.xs + 2,
-              borderRadius: radius.sm,
-              opacity: pressed ? 0.75 : 1,
-            },
-          ]}
+          scaleTo={0.96}
+          style={[styles.m3ActionPill, { backgroundColor: m3.primary }]}
         >
-          <Text style={[type.caption, { color: c.accentText, fontWeight: '700' }]}>+ LOG</Text>
-        </Pressable>
+          <Text style={[m3Type.labelMedium, { color: m3.onPrimary }]}>+ LOG</Text>
+        </M3Pressable>
       </View>
 
       {/* Main Chart Card */}
-      <Card style={{ marginBottom: spacing.lg }}>
-        {/* Time Range Pills: W | M | 3M | Y */}
-        <View
-          style={{
-            flexDirection: 'row',
-            backgroundColor: c.surface,
-            borderRadius: radius.sm,
-            padding: 3,
-            marginBottom: spacing.md,
+      <M3Card shape="extraLarge" style={{ marginBottom: 20 }}>
+        {/* Connected M3 Segmented Buttons */}
+        <M3SegmentedButton
+          options={RANGES}
+          selected={timeRange}
+          onSelect={(r) => {
+            setTimeRange(r);
+            setRangeOffset(0);
           }}
-        >
-          {RANGES.map((r) => {
-            const active = timeRange === r.key;
-            return (
-              <Pressable
-                key={r.key}
-                onPress={() => {
-                  setTimeRange(r.key);
-                  setRangeOffset(0);
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 6,
-                  alignItems: 'center',
-                  backgroundColor: active ? c.accent : 'transparent',
-                  borderRadius: 6,
-                }}
-              >
-                <Text
-                  style={[
-                    type.caption,
-                    {
-                      color: active ? c.accentText : c.textSecondary,
-                      fontWeight: active ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        />
 
         {/* Date Range Header with Prev/Next Controls */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: spacing.sm,
-          }}
-        >
-          <Text style={[type.title, { color: c.text, fontSize: 19, fontWeight: '700' }]}>
-            {window.label}
-          </Text>
+        <View style={styles.m3RangeHeader}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>{window.label}</Text>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Pressable
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <M3Pressable
               onPress={() => setRangeOffset((o) => o - 1)}
               hitSlop={10}
-              style={{ paddingHorizontal: 6 }}
+              scaleTo={0.92}
+              style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
             >
-              <Text style={{ color: c.textSecondary, fontSize: 22, lineHeight: 24 }}>‹</Text>
-            </Pressable>
-            <Pressable
+              <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>‹</Text>
+            </M3Pressable>
+            <M3Pressable
               onPress={() => setRangeOffset((o) => Math.min(0, o + 1))}
               disabled={rangeOffset >= 0}
               hitSlop={10}
-              style={{ paddingHorizontal: 6 }}
+              scaleTo={0.92}
+              style={[
+                styles.m3IconNavBtn,
+                {
+                  backgroundColor: m3.surfaceContainerHighest,
+                  opacity: rangeOffset >= 0 ? 0.35 : 1,
+                },
+              ]}
             >
-              <Text
-                style={{
-                  color: rangeOffset >= 0 ? c.separator : c.textSecondary,
-                  fontSize: 22,
-                  lineHeight: 24,
-                }}
-              >
-                ›
-              </Text>
-            </Pressable>
+              <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>›</Text>
+            </M3Pressable>
             {rangeOffset < 0 && (
-              <Pressable
+              <M3Pressable
                 onPress={() => setRangeOffset(0)}
                 hitSlop={10}
-                style={{ paddingHorizontal: 6 }}
+                scaleTo={0.92}
+                style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
               >
-                <Text style={{ color: c.textSecondary, fontSize: 16 }}>↺</Text>
-              </Pressable>
+                <Text style={{ color: m3.primary, fontSize: 14, fontWeight: '700' }}>↺</Text>
+              </M3Pressable>
             )}
           </View>
         </View>
 
-        {/* Prominent Metric Display */}
-        <View style={{ marginBottom: spacing.md }}>
+        {/* Hero Current Weight Display (DisplaySmall: 36sp) */}
+        <View style={{ marginBottom: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-            <Text style={{ fontSize: 32, fontWeight: '700', color: c.text }}>
+            <Text style={[m3Type.displaySmall, { color: m3.onSurface }]}>
               {latestGlobalWeight ? latestGlobalWeight.weight.toFixed(1) : '--'}
             </Text>
-            <Text style={[type.bodyMedium, { color: c.textSecondary, marginLeft: 4 }]}>
-              kg
-            </Text>
+            <Text style={[m3Type.titleMedium, { color: m3.onSurfaceVariant, marginLeft: 6 }]}>kg</Text>
           </View>
-          <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-            {deltaText}
-          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.tertiary, marginTop: 2, fontWeight: '500' }]}>{deltaText}</Text>
         </View>
+
 
         {/* Continuous Time-Series Chart */}
         <WeightTimeSeriesChart
@@ -1067,22 +865,22 @@ export function WeightScreen() {
           window={window}
           onSelectEntry={setEditing}
         />
-      </Card>
+      </M3Card>
 
       {/* History Section */}
-      <Text style={[type.title, { color: c.text, marginBottom: spacing.sm }]}>History</Text>
+      <Text style={[m3Type.titleLarge, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
+        History
+      </Text>
       {historyDesc.length === 0 ? (
-        <EmptyState text="No weight entries recorded yet" />
+        <View style={styles.m3EmptyWrap}>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>No weight entries recorded yet</Text>
+        </View>
       ) : (
         historyDesc.map((w) => (
           <Pressable key={w.id} onPress={() => setEditing(w)}>
-            <View style={[styles.historyRow, { borderColor: c.separator }]}>
-              <Text style={[type.body, { color: c.text, fontWeight: '600' }]}>
-                {w.weight} kg
-              </Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                {formatDisplayDate(w.date)}
-              </Text>
+            <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
+              <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>{w.weight} kg</Text>
+              <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>{w.date}</Text>
             </View>
           </Pressable>
         ))
@@ -1103,484 +901,9 @@ export function WeightScreen() {
   );
 }
 
-// Lets you set a custom start time instead of always defaulting to "now".
-function StartFastModal({
-  visible,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const c = useTheme();
-  const [start, setStart] = useState(new Date());
-
-  useEffect(() => {
-    if (visible) setStart(new Date());
-  }, [visible]);
-
-  async function save() {
-    await startFast(start.toISOString());
-    onSaved();
-    onClose();
-  }
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>Start Fast</Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
-
-          <DateTimeField
-            label="Start time"
-            value={start}
-            onChange={setStart}
-            maximumDate={new Date()}
-          />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="START FAST" onPress={save} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-function ManualFastModal({
-  visible,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const c = useTheme();
-  const [start, setStart] = useState(new Date());
-  const [end, setEnd] = useState(new Date());
-
-  useEffect(() => {
-    if (visible) {
-      const now = new Date();
-      setStart(now);
-      setEnd(now);
-    }
-  }, [visible]);
-
-  async function save() {
-    if (end.getTime() <= start.getTime()) {
-      Alert.alert('Invalid range', 'End time must be after start time.');
-      return;
-    }
-    await insertManualFast(start.toISOString(), end.toISOString());
-    onSaved();
-    onClose();
-  }
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>Enter Fast</Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
-
-          <DateTimeField label="Start" value={start} onChange={setStart} maximumDate={new Date()} />
-          <DateTimeField label="End" value={end} onChange={setEnd} maximumDate={new Date()} />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="SAVE" onPress={save} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-function EndFastModal({
-  visible,
-  fast,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  fast: Fast;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const c = useTheme();
-  const [end, setEnd] = useState(new Date());
-
-  useEffect(() => {
-    if (visible) setEnd(new Date());
-  }, [visible]);
-
-  async function save() {
-    if (end.getTime() <= new Date(fast.start_time).getTime()) {
-      Alert.alert('Invalid time', 'End time must be after the fast started.');
-      return;
-    }
-    await endFast(fast.id, end.toISOString());
-    onSaved();
-    onClose();
-  }
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>End Fast</Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
-
-          <DateTimeField label="End time" value={end} onChange={setEnd} maximumDate={new Date()} />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="END FAST" onPress={save} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-// Edit or delete a completed fast — reached from the calendar or the
-// history list, for fixing mistakes after the fact.
-function EditFastModal({
-  visible,
-  fast,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  fast: Fast | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const c = useTheme();
-  const [start, setStart] = useState(new Date());
-  const [end, setEnd] = useState(new Date());
-
-  useEffect(() => {
-    if (visible && fast) {
-      setStart(new Date(fast.start_time));
-      setEnd(new Date(fast.end_time ?? fast.start_time));
-    }
-  }, [visible, fast]);
-
-  async function save() {
-    if (!fast) return;
-    if (end.getTime() <= start.getTime()) {
-      Alert.alert('Invalid range', 'End time must be after start time.');
-      return;
-    }
-    await updateFast(fast.id, start.toISOString(), end.toISOString());
-    onSaved();
-    onClose();
-  }
-
-  function remove() {
-    if (!fast) return;
-    Alert.alert(
-      'Delete this fast?',
-      'This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteFast(fast.id);
-            onSaved();
-            onClose();
-          },
-        },
-      ]
-    );
-  }
-
-  const durationHours = (end.getTime() - start.getTime()) / 3600000;
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>Edit Fast</Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
-
-          <DateTimeField label="Start" value={start} onChange={setStart} maximumDate={new Date()} />
-          <DateTimeField label="End" value={end} onChange={setEnd} maximumDate={new Date()} />
-
-          {durationHours > 0 && (
-            <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
-              Duration: {formatHM(durationHours * 3600000)}
-            </Text>
-          )}
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="SAVE" onPress={save} />
-            <View style={{ height: spacing.sm }} />
-            <DangerButton label="DELETE FAST" onPress={remove} />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  const c = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: spacing.md, marginBottom: spacing.xs }}>
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color, marginRight: 4 }} />
-      <Text style={[type.caption, { color: c.textSecondary }]}>{label}</Text>
-    </View>
-  );
-}
-
-function FastCalendar({
-  fasts,
-  onSelectFast,
-}: {
-  fasts: Fast[];
-  onSelectFast: (fast: Fast) => void;
-}) {
-  const c = useTheme();
-  const [offsetWeeks, setOffsetWeeks] = useState(0);
-
-  const days = getPast7Days(offsetWeeks);
-  const dateRangeLabel = formatDateRange(days);
-
-  // Collect data for each of the 7 days
-  const dayData = days.map((d) => {
-    const { totalHours, fasts: dayFasts, primaryFast } = getFastingForDay(d, fasts);
-    return {
-      date: d,
-      hours: totalHours,
-      fasts: dayFasts,
-      primaryFast,
-    };
-  });
-
-  // Calculate average across days with recorded fasting
-  const fastingDays = dayData.filter((d) => d.hours > 0);
-  const totalWeekHours = dayData.reduce((sum, d) => sum + d.hours, 0);
-  const avgHours = fastingDays.length > 0 ? totalWeekHours / fastingDays.length : 0;
-  const avgText = fastingDays.length > 0 ? formatHM(avgHours * 3600000) : '--';
-
-  // Calculate Y-axis scaling
-  const maxDayHours = Math.max(...dayData.map((d) => d.hours), 0);
-  const maxY = maxDayHours > 24 ? Math.ceil(maxDayHours / 6) * 6 : 24;
-  const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
-
-  const BAR_AREA_HEIGHT = 130;
-
-  return (
-    <Card style={{ marginBottom: spacing.lg }}>
-      {/* Header with Average and Date Range Navigation */}
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: spacing.lg,
-        }}
-      >
-        <View>
-          <Text style={[type.caption, { color: c.textSecondary, marginBottom: 2 }]}>
-            Average
-          </Text>
-          <Text style={{ color: c.text, fontSize: 26, fontWeight: '700' }}>
-            {avgText}
-          </Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 4 }}>
-          <Pressable
-            onPress={() => setOffsetWeeks((w) => w - 1)}
-            hitSlop={10}
-            style={{ paddingHorizontal: 4 }}
-          >
-            <Text style={{ color: c.textSecondary, fontSize: 22, lineHeight: 24 }}>‹</Text>
-          </Pressable>
-          <Text style={[type.bodyMedium, { color: c.text, fontWeight: '600', marginHorizontal: 4 }]}>
-            {dateRangeLabel}
-          </Text>
-          <Pressable
-            onPress={() => setOffsetWeeks((w) => Math.min(0, w + 1))}
-            disabled={offsetWeeks >= 0}
-            hitSlop={10}
-            style={{ paddingHorizontal: 4 }}
-          >
-            <Text
-              style={{
-                color: offsetWeeks >= 0 ? c.separator : c.textSecondary,
-                fontSize: 22,
-                lineHeight: 24,
-              }}
-            >
-              ›
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Chart Section */}
-      <View style={{ flexDirection: 'row', alignItems: 'stretch', marginBottom: spacing.md }}>
-        {/* Y-Axis Labels */}
-        <View
-          style={{
-            width: 28,
-            height: BAR_AREA_HEIGHT,
-            marginTop: 20,
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            paddingRight: 4,
-          }}
-        >
-          {yTicks.map((tick, i) => (
-            <Text
-              key={i}
-              style={{
-                fontSize: 10,
-                color: c.textSecondary,
-                fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-              }}
-            >
-              {tick}h
-            </Text>
-          ))}
-        </View>
-
-        {/* 7-Day Vertical Bars */}
-        <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
-          {dayData.map((d, i) => {
-            const barHeight =
-              d.hours > 0 ? Math.min(BAR_AREA_HEIGHT, Math.max(6, (d.hours / maxY) * BAR_AREA_HEIGHT)) : 0;
-            const barColor = hoursToColor(d.hours, c.separator);
-            const dateStr = `${d.date.getMonth() + 1}/${d.date.getDate() < 10 ? '0' : ''}${d.date.getDate()}`;
-
-            return (
-              <Pressable
-                key={i}
-                onPress={() => {
-                  if (d.primaryFast) {
-                    onSelectFast(d.primaryFast);
-                  }
-                }}
-                disabled={!d.primaryFast}
-                style={{ flex: 1, alignItems: 'center' }}
-              >
-                {/* Duration above bar */}
-                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: d.hours > 0 ? '700' : '400',
-                      color: d.hours > 0 ? c.text : c.textSecondary,
-                    }}
-                  >
-                    {d.hours > 0 ? `${Math.round(d.hours)}h` : '0h'}
-                  </Text>
-                </View>
-
-                {/* Vertical Bar & Background Track */}
-                <View
-                  style={{
-                    height: BAR_AREA_HEIGHT,
-                    width: 14,
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                  }}
-                >
-                  {/* Full height vertical track guideline */}
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      bottom: 0,
-                      width: 1.5,
-                      backgroundColor: c.separator,
-                      opacity: 0.35,
-                    }}
-                  />
-
-                  {/* Filled bar pill */}
-                  {d.hours > 0 && (
-                    <View
-                      style={{
-                        width: 10,
-                        height: barHeight,
-                        borderRadius: 5,
-                        backgroundColor: barColor,
-                      }}
-                    />
-                  )}
-                </View>
-
-                {/* Date label under bar */}
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: c.textSecondary,
-                    marginTop: 6,
-                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                  }}
-                >
-                  {dateStr}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Legend */}
-      <View
-        style={{
-          flexDirection: 'row',
-          marginTop: spacing.sm,
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-        }}
-      >
-        <LegendDot color={c.separator} label="< 12h" />
-        <LegendDot color="rgb(168, 230, 161)" label="12h+" />
-        <LegendDot color="rgb(56, 142, 60)" label="16h+" />
-        <LegendDot color="rgb(66, 133, 244)" label="24h+" />
-      </View>
-    </Card>
-  );
-}
+// ============================================================================
+// 2. STRENGTH MODULE (Material 3 Expressive - Semantic Content Hierarchy)
+// ============================================================================
 
 function EditLiftModal({
   visible,
@@ -1595,7 +918,7 @@ function EditLiftModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
 
@@ -1623,7 +946,7 @@ function EditLiftModal({
     if (!exercise) return;
     Alert.alert(
       'Clear Record?',
-      `Clear the max lift record for ${exercise}?`,
+      `Clear the maximum record for ${exercise}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1642,59 +965,55 @@ function EditLiftModal({
   if (!exercise) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>
-              {exercise.toUpperCase()}
-            </Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
+    <M3BottomSheet visible={visible} title={`Record ${exercise}`} onClose={onClose}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>
+        Weight added (kg) · Enter 0 for bodyweight
+      </Text>
+      <TextInput
+        value={weight}
+        onChangeText={setWeight}
+        placeholder="0"
+        placeholderTextColor={m3.onSurfaceVariant}
+        keyboardType="decimal-pad"
+        style={[
+          styles.m3TextInput,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            color: m3.onSurface,
+          },
+        ]}
+      />
 
-          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.sm }]}>
-            Weight (kg)
-          </Text>
-          <TextInput
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-            style={[styles.input, { color: c.text, borderColor: c.separator }]}
-          />
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant, marginTop: 14 }]}>
+        Repetitions
+      </Text>
+      <TextInput
+        value={reps}
+        onChangeText={setReps}
+        placeholder="e.g. 5"
+        placeholderTextColor={m3.onSurfaceVariant}
+        keyboardType="number-pad"
+        style={[
+          styles.m3TextInput,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            color: m3.onSurface,
+          },
+        ]}
+      />
 
-          <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
-            Reps
-          </Text>
-          <TextInput
-            value={reps}
-            onChangeText={setReps}
-            keyboardType="number-pad"
-            style={[styles.input, { color: c.text, borderColor: c.separator }]}
-          />
-
-          <View style={{ marginTop: spacing.lg }}>
-            <PrimaryButton label="SAVE" onPress={handleSave} />
-            {currentRecord && (
-              <View style={{ marginTop: spacing.sm }}>
-                <DangerButton label="CLEAR RECORD" onPress={handleDelete} />
-              </View>
-            )}
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      <View style={{ marginTop: 24, gap: 12 }}>
+        <M3FilledButton label="Save Record" onPress={handleSave} />
+        {currentRecord && (
+          <M3ErrorButton label="Clear Record" onPress={handleDelete} />
+        )}
+      </View>
+    </M3BottomSheet>
   );
 }
 
-// ---------- Strength Screen ----------
-
 export function StrengthScreen() {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [maxLifts, setMaxLifts] =
     useState<Record<Exercise, LiftRecord | null> | null>(null);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
@@ -1716,64 +1035,81 @@ export function StrengthScreen() {
     load();
   }, [load]);
 
+  // Auto-stack non-empty recorded cards at top, and empty unrecorded cards at bottom
+  const recordedExercises = EXERCISES.filter((ex) => !!maxLifts?.[ex]);
+  const unrecordedExercises = EXERCISES.filter((ex) => !maxLifts?.[ex]);
+  const sortedExercises = [...recordedExercises, ...unrecordedExercises];
+
   return (
     <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.screenPad}
+      style={{ backgroundColor: m3.surface }}
+      contentContainerStyle={styles.m3ScreenPad}
+      showsVerticalScrollIndicator={false}
     >
-      <Text
-        style={[
-          type.largeTitle,
-          {
-            color: c.text,
-            marginBottom: spacing.lg,
-          },
-        ]}
-      >
-        Strength
-      </Text>
+      <View style={styles.m3TitleRow}>
+        <View>
+          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Strength</Text>
+        </View>
+      </View>
 
-      {EXERCISES.map((ex) => {
+      {sortedExercises.map((ex) => {
         const rec = maxLifts?.[ex];
+        const hasRecord = !!rec;
 
         return (
           <Pressable key={ex} onPress={() => setEditingExercise(ex)}>
-            <Card style={{ marginBottom: spacing.md }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={[type.title, { color: c.text }]}>
-                  {ex.toUpperCase()}
-                </Text>
-                <Text style={[type.caption, { color: c.textSecondary }]}>Edit ›</Text>
-              </View>
+            {hasRecord ? (
+              /* Elevated Active Record Card */
+              <M3Card
+                shape="large"
+                containerLevel="surfaceContainer"
+                style={{ marginBottom: 12, padding: 18 }}
+              >
+                <View style={styles.m3ExerciseHeaderRow}>
+                  <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
+                    {ex}
+                  </Text>
+                  <View style={[styles.m3TonalChip, { backgroundColor: m3.secondaryContainer }]}>
+                    <Text style={[m3Type.labelSmall, { color: m3.onSecondaryContainer }]}>
+                      EDIT
+                    </Text>
+                  </View>
+                </View>
 
-              {rec ? (
-                <Text
-                  style={[
-                    type.body,
-                    {
-                      color: c.text,
-                      marginTop: spacing.xs,
-                    },
-                  ]}
-                >
+                <Text style={[m3Type.headlineMedium, { color: m3.pallasBlue, marginTop: 4, fontWeight: '600' }]}>
                   {rec.weight === 0
                     ? `Bodyweight × ${rec.reps}`
                     : `${fmtWeight(rec.weight)} kg × ${rec.reps}`}
                 </Text>
-              ) : (
-                <Text
-                  style={[
-                    type.caption,
-                    {
-                      color: c.textSecondary,
-                      marginTop: spacing.xs,
-                    },
-                  ]}
-                >
-                  No record yet · Tap to set
-                </Text>
-              )}
-            </Card>
+              </M3Card>
+
+            ) : (
+              /* Compact Subtle Unrecorded Row */
+              <View
+                style={[
+                  styles.m3EmptyExerciseRow,
+                  {
+                    backgroundColor: m3.surfaceContainerLowest,
+                    borderColor: m3.outlineVariant,
+                  },
+                ]}
+              >
+                <View>
+                  <Text style={[m3Type.titleSmall, { color: m3.onSurface }]}>
+                    {ex}
+                  </Text>
+                  <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+                    No record set
+                  </Text>
+                </View>
+
+                <View style={[styles.m3TonalChip, { backgroundColor: m3.surfaceContainerHighest }]}>
+                  <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>
+                    + LOG
+                  </Text>
+                </View>
+              </View>
+            )}
           </Pressable>
         );
       })}
@@ -1789,12 +1125,415 @@ export function StrengthScreen() {
   );
 }
 
-export const LiftsScreen = StrengthScreen;
 
-// ---------- Fasting Screen ----------
+// ============================================================================
+// 3. FASTING MODULE (Material 3 Expressive)
+// ============================================================================
+
+function FastCalendar({
+  fasts,
+  onSelectFast,
+}: {
+  fasts: Fast[];
+  onSelectFast: (fast: Fast) => void;
+}) {
+  const m3 = useM3Theme();
+  const [offsetWeeks, setOffsetWeeks] = useState(0);
+
+  const days = getPast7Days(offsetWeeks);
+  const dateRangeLabel = formatDateRange(days);
+
+  const dayData = days.map((d) => {
+    const { totalHours, fasts: dayFasts, primaryFast } = getFastingForDay(d, fasts);
+    return {
+      date: d,
+      hours: totalHours,
+      fasts: dayFasts,
+      primaryFast,
+    };
+  });
+
+  const fastingDays = dayData.filter((d) => d.hours > 0);
+  const totalWeekHours = dayData.reduce((sum, d) => sum + d.hours, 0);
+  const avgHours = fastingDays.length > 0 ? totalWeekHours / fastingDays.length : 0;
+  const avgText = fastingDays.length > 0 ? formatHM(avgHours * 3600000) : '--';
+
+  const maxDayHours = Math.max(...dayData.map((d) => d.hours), 0);
+  const maxY = maxDayHours > 24 ? Math.ceil(maxDayHours / 6) * 6 : 24;
+  const yTicks = [maxY, Math.round(maxY * 0.66), Math.round(maxY * 0.33), 0];
+
+  const BAR_AREA_HEIGHT = 130;
+
+  return (
+    <M3Card shape="extraLarge" style={{ marginBottom: 20 }}>
+      {/* Header with Average and Date Range Navigation */}
+      <View style={styles.m3CalendarHeader}>
+        <View>
+          <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>Daily Average</Text>
+          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>{avgText}</Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <M3Pressable
+            onPress={() => setOffsetWeeks((w) => w - 1)}
+            hitSlop={10}
+            scaleTo={0.92}
+            style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
+          >
+            <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>‹</Text>
+          </M3Pressable>
+          <Text style={[m3Type.titleSmall, { color: m3.onSurface, marginHorizontal: 4 }]}>
+            {dateRangeLabel}
+          </Text>
+          <M3Pressable
+            onPress={() => setOffsetWeeks((w) => Math.min(0, w + 1))}
+            disabled={offsetWeeks >= 0}
+            hitSlop={10}
+            scaleTo={0.92}
+            style={[
+              styles.m3IconNavBtn,
+              {
+                backgroundColor: m3.surfaceContainerHighest,
+                opacity: offsetWeeks >= 0 ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>›</Text>
+          </M3Pressable>
+        </View>
+      </View>
+
+      {/* Chart Section */}
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', marginBottom: 16 }}>
+        {/* Y-Axis Labels */}
+        <View
+          style={{
+            width: 28,
+            height: BAR_AREA_HEIGHT,
+            marginTop: 20,
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+          }}
+        >
+          {yTicks.map((tick, i) => (
+            <Text
+              key={i}
+              style={{
+                fontSize: 10,
+                color: m3.onSurfaceVariant,
+                fontWeight: '600',
+              }}
+            >
+              {tick}h
+            </Text>
+          ))}
+        </View>
+
+        {/* 7-Day Vertical Bars */}
+        <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
+          {dayData.map((d, i) => {
+            const barHeight =
+              d.hours > 0
+                ? Math.min(BAR_AREA_HEIGHT, Math.max(8, (d.hours / maxY) * BAR_AREA_HEIGHT))
+                : 0;
+            const barColor = hoursToM3Color(d.hours, m3.surfaceContainerHighest, m3);
+            const dateStr = `${d.date.getMonth() + 1}/${d.date.getDate()}`;
+
+            return (
+              <Pressable
+                key={i}
+                onPress={() => {
+                  if (d.primaryFast) {
+                    onSelectFast(d.primaryFast);
+                  }
+                }}
+                disabled={!d.primaryFast}
+                style={{ flex: 1, alignItems: 'center' }}
+              >
+                {/* Duration above bar */}
+                <View style={{ height: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: d.hours > 0 ? '700' : '500',
+                      color: d.hours > 0 ? m3.onSurface : m3.onSurfaceVariant,
+                    }}
+                  >
+                    {d.hours > 0 ? `${Math.round(d.hours)}h` : '0h'}
+                  </Text>
+                </View>
+
+                {/* Vertical Bar & Track */}
+                <View
+                  style={{
+                    height: BAR_AREA_HEIGHT,
+                    width: 16,
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      backgroundColor: m3.outlineVariant,
+                    }}
+                  />
+
+                  {/* Filled bar pill */}
+                  {d.hours > 0 && (
+                    <View
+                      style={{
+                        width: 14,
+                        height: barHeight,
+                        borderRadius: 7,
+                        backgroundColor: barColor,
+                      }}
+                    />
+                  )}
+                </View>
+
+                {/* Date label under bar */}
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: m3.onSurfaceVariant,
+                    marginTop: 6,
+                    fontWeight: '600',
+                  }}
+                >
+                  {dateStr}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Legend */}
+      <View style={styles.m3LegendRow}>
+        <View style={styles.m3LegendItem}>
+          <View style={[styles.m3LegendDot, { backgroundColor: m3.fastingUnder12 }]} />
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>&lt;12h</Text>
+        </View>
+        <View style={styles.m3LegendItem}>
+          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting12to16 }]} />
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>12–16h</Text>
+        </View>
+        <View style={styles.m3LegendItem}>
+          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting16to24 }]} />
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>16–24h</Text>
+        </View>
+        <View style={styles.m3LegendItem}>
+          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting24plus }]} />
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>24h+</Text>
+        </View>
+      </View>
+    </M3Card>
+
+  );
+}
+
+function StartFastModal({
+  visible,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [startTime, setStartTime] = useState(new Date());
+
+  useEffect(() => {
+    if (visible) setStartTime(new Date());
+  }, [visible]);
+
+  async function handleStart() {
+    await startFast(startTime.toISOString());
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <M3BottomSheet visible={visible} title="Start Fast" onClose={onClose}>
+      <DateTimeField
+        label="Start Time"
+        value={startTime}
+        onChange={setStartTime}
+        maximumDate={new Date()}
+      />
+      <View style={{ marginTop: 24 }}>
+        <M3FilledButton label="Begin Fast" onPress={handleStart} />
+      </View>
+    </M3BottomSheet>
+  );
+}
+
+function ManualFastModal({
+  visible,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [startTime, setStartTime] = useState(new Date(Date.now() - 16 * 3600000));
+  const [endTime, setEndTime] = useState(new Date());
+
+  useEffect(() => {
+    if (visible) {
+      setStartTime(new Date(Date.now() - 16 * 3600000));
+      setEndTime(new Date());
+    }
+  }, [visible]);
+
+  async function handleSave() {
+    if (endTime.getTime() <= startTime.getTime()) {
+      Alert.alert('Invalid fast', 'End time must be after start time.');
+      return;
+    }
+    await insertManualFast(startTime.toISOString(), endTime.toISOString());
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <M3BottomSheet visible={visible} title="Enter Past Fast" onClose={onClose}>
+      <DateTimeField
+        label="Start Time"
+        value={startTime}
+        onChange={setStartTime}
+        maximumDate={new Date()}
+      />
+      <DateTimeField
+        label="End Time"
+        value={endTime}
+        onChange={setEndTime}
+        maximumDate={new Date()}
+      />
+      <View style={{ marginTop: 24 }}>
+        <M3FilledButton label="Save Fast" onPress={handleSave} />
+      </View>
+    </M3BottomSheet>
+  );
+}
+
+function EndFastModal({
+  visible,
+  fast,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  fast: Fast;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [endTime, setEndTime] = useState(new Date());
+
+  useEffect(() => {
+    if (visible) setEndTime(new Date());
+  }, [visible]);
+
+  async function handleEnd() {
+    await endFast(fast.id, endTime.toISOString());
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <M3BottomSheet visible={visible} title="End Active Fast" onClose={onClose}>
+      <DateTimeField
+        label="End Time"
+        value={endTime}
+        onChange={setEndTime}
+        maximumDate={new Date()}
+      />
+      <View style={{ marginTop: 24 }}>
+        <M3FilledButton label="End Fast" onPress={handleEnd} />
+      </View>
+    </M3BottomSheet>
+  );
+}
+
+function EditFastModal({
+  visible,
+  fast,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  fast: Fast | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [startTime, setStartTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(new Date());
+
+  useEffect(() => {
+    if (visible && fast) {
+      setStartTime(new Date(fast.start_time));
+      setEndTime(fast.end_time ? new Date(fast.end_time) : new Date());
+    }
+  }, [visible, fast]);
+
+  async function handleSave() {
+    if (!fast) return;
+    if (endTime.getTime() <= startTime.getTime()) {
+      Alert.alert('Invalid fast', 'End time must be after start time.');
+      return;
+    }
+    await updateFast(fast.id, startTime.toISOString(), endTime.toISOString());
+    onSaved();
+    onClose();
+  }
+
+  function handleDelete() {
+    if (!fast) return;
+    Alert.alert('Delete fast?', 'This fast record will be permanently deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteFast(fast.id);
+          onSaved();
+          onClose();
+        },
+      },
+    ]);
+  }
+
+  if (!fast) return null;
+
+  return (
+    <M3BottomSheet visible={visible} title="Edit Fast Record" onClose={onClose}>
+      <DateTimeField
+        label="Start Time"
+        value={startTime}
+        onChange={setStartTime}
+        maximumDate={new Date()}
+      />
+      <DateTimeField
+        label="End Time"
+        value={endTime}
+        onChange={setEndTime}
+        maximumDate={new Date()}
+      />
+      <View style={{ marginTop: 24, gap: 12 }}>
+        <M3FilledButton label="Save Changes" onPress={handleSave} />
+        <M3ErrorButton label="Delete Fast" onPress={handleDelete} />
+      </View>
+    </M3BottomSheet>
+  );
+}
 
 export function FastingScreen() {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [activeFast, setActiveFastState] = useState<Fast | null>(null);
   const [history, setHistory] = useState<Fast[]>([]);
   const [now, setNow] = useState(Date.now());
@@ -1822,50 +1561,83 @@ export function FastingScreen() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: c.background }}
-      contentContainerStyle={styles.screenPad}
+      style={{ backgroundColor: m3.surface }}
+      contentContainerStyle={styles.m3ScreenPad}
+      showsVerticalScrollIndicator={false}
     >
-      <Text style={[type.largeTitle, { color: c.text, marginBottom: spacing.lg }]}>Fasting</Text>
+      <View style={styles.m3TitleRow}>
+        <View>
+          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Fasting</Text>
+        </View>
+      </View>
 
-      <Card style={{ marginBottom: spacing.lg }}>
+      {/* Hero Active / Inactive Fast Card */}
+      <M3Card shape="extraLarge" style={{ marginBottom: 20 }}>
         {activeFast ? (
           <View style={{ alignItems: 'center' }}>
-            <Text style={[type.caption, { color: c.textSecondary }]}>FASTING</Text>
-            <Text style={[type.monoLarge, { color: c.text, marginVertical: spacing.sm }]}>
+            <View style={[styles.m3StatusBadge, { backgroundColor: m3.primaryContainer }]}>
+              <Text style={[m3Type.labelSmall, { color: m3.onPrimaryContainer }]}>
+                ● ACTIVE FAST
+              </Text>
+            </View>
+
+            <Text style={[styles.m3TimerText, { color: m3.onSurface }]}>
               {formatHMS(elapsed)}
             </Text>
-            <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.md }]}>
+
+            <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginBottom: 20 }]}>
               Started {formatTime(activeFast.start_time)}
             </Text>
-            <PrimaryButton label="   END FAST   " onPress={() => setShowEndFast(true)} />
+
+            <M3FilledButton
+              label="End Fast"
+              onPress={() => setShowEndFast(true)}
+              style={{ width: '100%' }}
+            />
           </View>
         ) : (
           <View style={{ alignItems: 'center' }}>
-            <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.md }]}>
-              NOT FASTING
-            </Text>
-            <PrimaryButton label="    START FAST    " onPress={() => setShowStartFast(true)} />
-            <View style={{ height: spacing.sm }} />
-            <SecondaryButton label="  Enter fast manually  " onPress={() => setShowManualFast(true)} />
+            <View style={[styles.m3StatusBadge, { backgroundColor: m3.surfaceContainerHighest }]}>
+              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>
+                NOT FASTING
+              </Text>
+            </View>
+
+            <View style={{ height: 16 }} />
+
+            <M3FilledButton
+              label="Start Fast"
+              onPress={() => setShowStartFast(true)}
+              style={{ width: '100%', marginBottom: 10 }}
+            />
+            <M3TonalButton
+              label="Enter fast manually"
+              onPress={() => setShowManualFast(true)}
+              style={{ width: '100%' }}
+            />
           </View>
         )}
-      </Card>
+      </M3Card>
 
       <FastCalendar fasts={history} onSelectFast={setEditing} />
 
-      <Text style={[type.title, { color: c.text, marginBottom: spacing.sm }]}>History</Text>
+      <Text style={[m3Type.titleLarge, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
+        History
+      </Text>
       {history.length === 0 ? (
-        <EmptyState text="No fasts recorded yet" />
+        <View style={styles.m3EmptyWrap}>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>No fasts recorded yet</Text>
+        </View>
       ) : (
         history.map((f) => (
           <Pressable key={f.id} onPress={() => setEditing(f)}>
-            <View style={[styles.historyRow, { borderColor: c.separator }]}>
-              <Text style={[type.body, { color: c.text }]}>
+            <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
+              <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
                 {f.end_time
                   ? formatHM(new Date(f.end_time).getTime() - new Date(f.start_time).getTime())
                   : ''}
               </Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
+              <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>
                 {formatShortDate(f.start_time)}
               </Text>
             </View>
@@ -1901,81 +1673,155 @@ export function FastingScreen() {
   );
 }
 
-// ---------- styles ----------
+// ============================================================================
+// STYLES
+// ============================================================================
 
 const styles = StyleSheet.create({
-  screenPad: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl * 2,
+  m3ScreenPad: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 48,
   },
-  primaryButton: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.sm,
+  m3TitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  secondaryButton: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  modalWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalOverlay: {
-    flex: 1,
+  m3ActionPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: m3Shape.full,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    padding: spacing.lg,
   },
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  sheetHeaderRow: {
+
+  m3RangeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 12,
   },
-  exerciseRow: {
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  m3IconNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: m3Shape.full,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 17,
-    marginTop: spacing.xs,
+  m3ListRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: m3Shape.large,
+    marginBottom: 8,
   },
-  dateChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  m3ExerciseHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  m3EmptyExerciseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: m3Shape.large,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  m3TonalChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: m3Shape.small,
+  },
+  m3StatusBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: m3Shape.full,
+    marginBottom: 12,
+  },
+  m3TimerText: {
+    fontSize: 46,
+    fontWeight: '300',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: 1,
+    marginVertical: 6,
+  },
+  m3CalendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+  },
+  m3LegendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 10,
+  },
+  m3LegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  m3LegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  m3ModalWrap: {
     flex: 1,
-    alignItems: 'center',
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  historyRow: {
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  m3Sheet: {
+    borderTopLeftRadius: m3Shape.extraLarge,
+    borderTopRightRadius: m3Shape.extraLarge,
+    padding: 22,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
   },
-  historyItemRow: {
+  m3DragHandle: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+    opacity: 0.4,
+  },
+  m3SheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  detailCard: {
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    width: '100%',
-    maxWidth: 320,
+  m3CloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: m3Shape.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  m3TextInput: {
+    height: 52,
+    borderRadius: m3Shape.medium,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  m3DateField: {
+    height: 52,
+    borderRadius: m3Shape.medium,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  m3EmptyWrap: {
+    paddingVertical: 32,
+    alignItems: 'center',
   },
 });

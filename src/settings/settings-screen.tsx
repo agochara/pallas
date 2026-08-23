@@ -3,15 +3,18 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   TextInput,
-  Modal,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
   Alert,
 } from 'react-native';
-import { useTheme, spacing, radius, type } from '../themes/theme';
+import { useM3Theme, m3Shape, m3Type } from '../themes/theme';
+import {
+  M3Card,
+  M3Pressable,
+  M3FilledButton,
+  M3BottomSheet,
+} from '../themes/m3-components';
 import Constants from 'expo-constants';
 import {
   executeRawSql,
@@ -22,49 +25,6 @@ import {
   deleteEverything,
 } from '../database/db';
 import { exportPallasData, importPallasData } from '../database/export';
-
-// ---------- Shared UI Components ----------
-
-function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  const c = useTheme();
-  return (
-    <View
-      style={[
-        { backgroundColor: c.card, borderRadius: radius.md, padding: spacing.md },
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-function PrimaryButton({
-  label,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  const c = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.primaryButton,
-        {
-          backgroundColor: c.accent,
-          opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
-        },
-      ]}
-    >
-      <Text style={[type.bodyMedium, { color: c.accentText }]}>{label}</Text>
-    </Pressable>
-  );
-}
 
 // ---------- SQL Info Modal ----------
 
@@ -77,7 +37,7 @@ function SqlInfoModal({
   onClose: () => void;
   onPickExample: (query: string) => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
 
   const examples = [
     {
@@ -127,176 +87,279 @@ function SqlInfoModal({
   ];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background, maxHeight: '85%' }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>SQL Guide & Schema</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
+    <M3BottomSheet visible={visible} onClose={onClose} title="SQL Guide & Schema">
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Database Tables */}
+        <Text
+          style={[
+            m3Type.labelLarge,
+            { color: m3.primary, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' },
+          ]}
+        >
+          DATABASE TABLES
+        </Text>
+
+        {/* Table 1: max_lifts */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+            max_lifts
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores personal maximum weight and reps for each exercise.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • exercise TEXT PRIMARY KEY ('Squat', 'Bench Press', 'Deadlift', 'Clean & Press', 'Pullups', 'Chins')
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • weight REAL (e.g. 100.5, or 0 for bodyweight)
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • reps INTEGER (e.g. 5)
+            </Text>
           </View>
+        </M3Card>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Database Tables */}
-            <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.xs, fontWeight: '600' }]}>
-              DATABASE TABLES
+        {/* Table 2: fasts */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+            fasts
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores intermittent fasting start and end timestamps.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • id INTEGER PRIMARY KEY AUTOINCREMENT
             </Text>
-
-            {/* Table 1: max_lifts */}
-            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
-              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>max_lifts</Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                Stores personal maximum weight and reps for each exercise.
-              </Text>
-              <View style={{ marginTop: spacing.xs }}>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • exercise TEXT PRIMARY KEY ('Squat', 'Bench Press', 'Deadlift', 'Clean & Press', 'Pullups', 'Chins')
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • weight REAL (e.g. 100.5, or 0 for bodyweight)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • reps INTEGER (e.g. 5)
-                </Text>
-              </View>
-            </View>
-
-            {/* Table 2: fasts */}
-            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
-              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>fasts</Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                Stores intermittent fasting start and end timestamps.
-              </Text>
-              <View style={{ marginTop: spacing.xs }}>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • id INTEGER PRIMARY KEY AUTOINCREMENT
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • start_time TEXT (ISO 8601 string)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • end_time TEXT (ISO 8601 string, NULL if active)
-                </Text>
-              </View>
-            </View>
-
-            {/* Table 3: weights */}
-            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
-              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>weights</Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                Stores body weight measurements with calendar dates.
-              </Text>
-              <View style={{ marginTop: spacing.xs }}>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • id INTEGER PRIMARY KEY AUTOINCREMENT
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • weight REAL (e.g. 78.5)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • date TEXT (YYYY-MM-DD)
-                </Text>
-              </View>
-            </View>
-
-            {/* Table 4: vade_mecum */}
-            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm }}>
-              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>vade_mecum</Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                Stores the continuous Vade Mecum commonplace book document.
-              </Text>
-              <View style={{ marginTop: spacing.xs }}>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • id INTEGER PRIMARY KEY (1)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • content TEXT
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • updated_at TEXT (ISO 8601 string)
-                </Text>
-              </View>
-            </View>
-
-            {/* Table 5: newsletter_settings */}
-            <View style={{ backgroundColor: c.surface, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
-              <Text style={[type.bodyMedium, { color: c.text, fontWeight: '700' }]}>newsletter_settings</Text>
-              <Text style={[type.caption, { color: c.textSecondary, marginTop: 2 }]}>
-                Stores The Study issue number, To Self note, and daily quotes.
-              </Text>
-              <View style={{ marginTop: spacing.xs }}>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • id INTEGER PRIMARY KEY (1)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • issue_number INTEGER (e.g. 33)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • to_self_text TEXT
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • last_issue_date TEXT (YYYY-MM-DD)
-                </Text>
-                <Text style={[type.caption, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: c.text }]}>
-                  • archive_quote_1 TEXT, archive_quote_2 TEXT
-                </Text>
-              </View>
-            </View>
-
-            {/* Example Queries */}
-            <Text style={[type.caption, { color: c.textSecondary, marginBottom: spacing.xs, fontWeight: '600' }]}>
-              EXAMPLE QUERIES (TAP TO USE)
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • start_time TEXT (ISO 8601 string)
             </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • end_time TEXT (ISO 8601 string, NULL if active)
+            </Text>
+          </View>
+        </M3Card>
 
-            {examples.map((ex, i) => (
-              <Pressable
-                key={i}
-                onPress={() => {
-                  onPickExample(ex.sql);
-                  onClose();
-                }}
-                style={({ pressed }) => [
-                  {
-                    backgroundColor: c.surface,
-                    borderRadius: radius.sm,
-                    padding: spacing.sm,
-                    marginBottom: spacing.sm,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text style={[type.caption, { color: c.textSecondary, fontWeight: '600', marginBottom: 3 }]}>
-                  {ex.title}
-                </Text>
-                <Text
-                  style={[
-                    type.caption,
-                    {
-                      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                      color: c.text,
-                      fontSize: 12,
-                    },
-                  ]}
-                >
-                  {ex.sql}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        {/* Table 3: weights */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+            weights
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores body weight measurements with calendar dates.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • id INTEGER PRIMARY KEY AUTOINCREMENT
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • weight REAL (e.g. 78.5)
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • date TEXT (YYYY-MM-DD)
+            </Text>
+          </View>
+        </M3Card>
+
+        {/* Table 4: vade_mecum */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+            vade_mecum
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores the continuous Vade Mecum commonplace book document.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • id INTEGER PRIMARY KEY (1)
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • content TEXT
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • updated_at TEXT (ISO 8601 string)
+            </Text>
+          </View>
+        </M3Card>
+
+        {/* Table 5: newsletter_settings */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 16 }}
+        >
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+            newsletter_settings
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores The Study issue number, To Self note, and daily quotes.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • id INTEGER PRIMARY KEY (1)
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • issue_number INTEGER (e.g. 33)
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • to_self_text TEXT
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
+              ]}
+            >
+              • last_issue_date TEXT (YYYY-MM-DD)
+            </Text>
+          </View>
+        </M3Card>
+
+        {/* Example Queries */}
+        <Text
+          style={[
+            m3Type.labelLarge,
+            { color: m3.primary, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' },
+          ]}
+        >
+          EXAMPLE QUERIES (TAP TO USE)
+        </Text>
+
+        {examples.map((ex, i) => (
+          <M3Pressable
+            key={i}
+            onPress={() => {
+              onPickExample(ex.sql);
+              onClose();
+            }}
+            scaleTo={0.97}
+            style={[
+              styles.exampleCard,
+              {
+                backgroundColor: m3.surfaceContainerHighest,
+                borderRadius: m3Shape.medium,
+                borderColor: m3.outlineVariant,
+              },
+            ]}
+          >
+            <Text style={[m3Type.labelMedium, { color: m3.primary, marginBottom: 4 }]}>
+              {ex.title}
+            </Text>
+            <Text
+              style={[
+                m3Type.bodySmall,
+                {
+                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                  color: m3.onSurface,
+                  fontSize: 12,
+                },
+              ]}
+            >
+              {ex.sql}
+            </Text>
+          </M3Pressable>
+        ))}
+      </ScrollView>
+    </M3BottomSheet>
   );
 }
 
 // ---------- Settings Screen ----------
 
 export function SettingsScreen() {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [working, setWorking] = useState(false);
   const [sqlQuery, setSqlQuery] = useState('');
   const [sqlResult, setSqlResult] = useState<string | null>(null);
@@ -390,70 +453,70 @@ export function SettingsScreen() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: c.background }}
+      style={{ backgroundColor: m3.surface }}
       contentContainerStyle={styles.screenPad}
+      showsVerticalScrollIndicator={false}
     >
       <Text
         style={[
-          type.caption,
+          m3Type.labelLarge,
           {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
+            color: m3.primary,
+            marginBottom: 10,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
           },
         ]}
       >
         SQL CONSOLE
       </Text>
 
-      <Card style={{ marginBottom: spacing.lg }}>
+      <M3Card
+        containerLevel="surfaceContainer"
+        shape="largeIncreased"
+        style={{ marginBottom: 24 }}
+      >
         <TextInput
           placeholder="Enter SQL statement (e.g. SELECT * FROM max_lifts;)"
-          placeholderTextColor={c.textSecondary}
+          placeholderTextColor={m3.onSurfaceVariant}
           value={sqlQuery}
           onChangeText={setSqlQuery}
           multiline
           autoCapitalize="none"
           autoCorrect={false}
           style={[
-            styles.input,
+            styles.sqlInput,
             {
-              color: c.text,
-              borderColor: c.separator,
-              minHeight: 70,
-              textAlignVertical: 'top',
-              fontSize: 14,
+              color: m3.onSurface,
+              borderColor: m3.outlineVariant,
+              backgroundColor: m3.surfaceContainerHighest,
             },
           ]}
         />
-        <View style={{ marginTop: spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Pressable
+            <M3Pressable
               onPress={() => setShowSqlInfo(true)}
-              style={({ pressed }) => [
+              scaleTo={0.9}
+              style={[
+                styles.infoBtn,
                 {
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: c.separator,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: spacing.sm,
-                  opacity: pressed ? 0.6 : 1,
+                  borderColor: m3.outlineVariant,
+                  backgroundColor: m3.surfaceContainerHigh,
                 },
               ]}
               hitSlop={8}
             >
-              <Text style={{ fontSize: 16, fontWeight: '600', color: c.textSecondary }}>ⓘ</Text>
-            </Pressable>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: m3.onSurfaceVariant }}>ⓘ</Text>
+            </M3Pressable>
             {sqlResult ? (
-              <Pressable onPress={() => setSqlResult(null)}>
-                <Text style={[type.caption, { color: c.textSecondary }]}>Clear output</Text>
-              </Pressable>
+              <M3Pressable onPress={() => setSqlResult(null)}>
+                <Text style={[m3Type.bodySmall, { color: m3.primary }]}>Clear output</Text>
+              </M3Pressable>
             ) : null}
           </View>
-          <View style={{ width: 120 }}>
-            <PrimaryButton
+          <View style={{ width: 130 }}>
+            <M3FilledButton
               label={working ? 'RUNNING...' : 'RUN SQL'}
               onPress={handleRunSql}
               disabled={working || !sqlQuery.trim()}
@@ -464,20 +527,20 @@ export function SettingsScreen() {
         {sqlResult && (
           <View
             style={{
-              marginTop: spacing.md,
-              padding: spacing.sm,
-              backgroundColor: c.surface,
-              borderRadius: radius.sm,
+              marginTop: 14,
+              padding: 12,
+              backgroundColor: m3.surfaceContainerHighest,
+              borderRadius: m3Shape.medium,
               maxHeight: 200,
             }}
           >
             <ScrollView nestedScrollEnabled>
               <Text
                 style={[
-                  type.caption,
+                  m3Type.bodySmall,
                   {
                     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                    color: c.text,
+                    color: m3.onSurface,
                     fontSize: 12,
                   },
                 ]}
@@ -488,7 +551,7 @@ export function SettingsScreen() {
             </ScrollView>
           </View>
         )}
-      </Card>
+      </M3Card>
 
       <SqlInfoModal
         visible={showSqlInfo}
@@ -498,186 +561,229 @@ export function SettingsScreen() {
 
       <Text
         style={[
-          type.caption,
+          m3Type.labelLarge,
           {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
+            color: m3.primary,
+            marginBottom: 10,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
           },
         ]}
       >
         DATA
       </Text>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={handleExport}
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={handleExport}
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 12 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Export data
           </Text>
-
           <Text
             style={[
-              type.caption,
+              m3Type.bodySmall,
               {
-                color: c.textSecondary,
+                color: m3.onSurfaceVariant,
                 marginTop: 3,
               },
             ]}
           >
             Save a backup of your Pallas data
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
-      <Card style={{ marginBottom: spacing.lg }}>
-        <Pressable
-          onPress={handleImport}
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={handleImport}
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 24 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Import data
           </Text>
-
           <Text
             style={[
-              type.caption,
+              m3Type.bodySmall,
               {
-                color: c.textSecondary,
+                color: m3.onSurfaceVariant,
                 marginTop: 3,
               },
             ]}
           >
             Merge a Pallas backup with this device
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
       <Text
         style={[
-          type.caption,
+          m3Type.labelLarge,
           {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
+            color: m3.error,
+            marginBottom: 10,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
           },
         ]}
       >
-        DELETE
+        RESET & CLEAR
       </Text>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete strength history?',
-              'All recorded strength maxes will be permanently deleted.',
-              deleteAllLifts
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={() =>
+          confirmDelete(
+            'Delete strength history?',
+            'All recorded strength maxes will be permanently deleted.',
+            deleteAllLifts
+          )
+        }
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 12 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Delete strength history
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete fasting history?',
-              'All recorded fasts will be permanently deleted.',
-              deleteAllFasts
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={() =>
+          confirmDelete(
+            'Delete fasting history?',
+            'All recorded fasts will be permanently deleted.',
+            deleteAllFasts
+          )
+        }
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 12 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Delete fasting history
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete weight history?',
-              'All recorded weight measurements will be permanently deleted.',
-              deleteAllWeights
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={() =>
+          confirmDelete(
+            'Delete weight history?',
+            'All recorded weight measurements will be permanently deleted.',
+            deleteAllWeights
+          )
+        }
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 12 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Delete weight history
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
-      <Card style={{ marginBottom: spacing.md }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Clear Vade Mecum?',
-              'All notes in Vade Mecum will be permanently cleared.',
-              clearVadeMecum
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={() =>
+          confirmDelete(
+            'Clear Vade Mecum?',
+            'All notes in Vade Mecum will be permanently cleared.',
+            clearVadeMecum
+          )
+        }
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 12 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
             Clear Vade Mecum
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
-      <Card style={{ marginBottom: spacing.lg }}>
-        <Pressable
-          onPress={() =>
-            confirmDelete(
-              'Delete everything?',
-              'All strength maxes, fasts, weights, Vade Mecum notes, and settings will be permanently reset.',
-              deleteEverything
-            )
-          }
-          disabled={working}
-          style={{ paddingVertical: spacing.sm }}
+      <M3Pressable
+        onPress={() =>
+          confirmDelete(
+            'Delete everything?',
+            'All strength maxes, fasts, weights, Vade Mecum notes, and settings will be permanently reset.',
+            deleteEverything
+          )
+        }
+        disabled={working}
+        scaleTo={0.98}
+        style={{ marginBottom: 24 }}
+      >
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ padding: 18 }}
         >
-          <Text style={[type.body, { color: c.text }]}>
+          <Text style={[m3Type.titleMedium, { color: m3.error }]}>
             Delete everything
           </Text>
-        </Pressable>
-      </Card>
+        </M3Card>
+      </M3Pressable>
 
       <Text
         style={[
-          type.caption,
+          m3Type.labelLarge,
           {
-            color: c.textSecondary,
-            marginBottom: spacing.sm,
+            color: m3.onSurfaceVariant,
+            marginBottom: 10,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
           },
         ]}
       >
         ABOUT
       </Text>
 
-      <Card style={{ marginBottom: spacing.lg }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.xs }}>
-          <Text style={[type.body, { color: c.text }]}>Pallas</Text>
-          <Text style={[type.body, { color: c.textSecondary }]}>
-            v{Constants.expoConfig?.version ?? '2.0.0'}
+      <M3Card
+        containerLevel="surfaceContainer"
+        shape="largeIncreased"
+        style={{ padding: 18, marginBottom: 32 }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>Pallas</Text>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>
+            v{Constants.expoConfig?.version ?? '2.1.1'}
           </Text>
         </View>
-      </Card>
+      </M3Card>
     </ScrollView>
   );
 }
@@ -686,41 +792,32 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screenPad: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl * 2,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 64,
   },
-
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  sqlInput: {
+    borderWidth: 1,
+    borderRadius: m3Shape.medium,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    fontSize: 14,
   },
-
-  primaryButton: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.sm,
+  infoBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
-
-  modalWrap: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-  },
-
-  sheetHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
+  exampleCard: {
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
   },
 });
+

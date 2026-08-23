@@ -2,11 +2,12 @@
   "expo": {
     "name": "Pallas",
     "slug": "logfit",
-    "version": "2.1.1",
+    "version": "2.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.n.pallas",
+      "backgroundColor": "#12140e",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/icon.png"

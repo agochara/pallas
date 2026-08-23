@@ -3,16 +3,20 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   TextInput,
-  Modal,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
   Alert,
-  useColorScheme,
 } from 'react-native';
-import { useTheme, spacing, radius, type } from '../themes/theme';
+import { useM3Theme, m3Shape, m3Type } from '../themes/theme';
+import {
+  M3Card,
+  M3Pressable,
+  M3FilledButton,
+  M3TonalButton,
+  M3BottomSheet,
+  M3TopAppBar,
+} from '../themes/m3-components';
 import {
   getNewsletterState,
   saveNewsletterSettings,
@@ -20,6 +24,12 @@ import {
   NewsletterState,
 } from '../database/db';
 import { myQuotes, taoTeChing } from '../content/data';
+import Svg, {
+  Rect,
+  Path,
+  Circle,
+  Line,
+} from 'react-native-svg';
 
 function getRandomArchiveQuotes(): [string, string] {
   if (myQuotes.length === 0) return ['', ''];
@@ -42,16 +52,17 @@ function renderTaoTeChing(poemHtml: string, textColor: string) {
   const lines = body.split(/<br\s*\/?>/i);
 
   return (
-    <View style={{ marginTop: spacing.xs }}>
+    <View style={{ marginTop: 6 }}>
       {title && (
         <Text
-          style={{
-            fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-            fontSize: 19,
-            fontWeight: '700',
-            color: textColor,
-            marginBottom: spacing.md,
-          }}
+          style={[
+            m3Type.titleMedium,
+            {
+              color: textColor,
+              marginBottom: 12,
+              fontWeight: '700',
+            },
+          ]}
         >
           {title}
         </Text>
@@ -64,20 +75,36 @@ function renderTaoTeChing(poemHtml: string, textColor: string) {
         return (
           <Text
             key={idx}
-            style={{
-              fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-              fontSize: 17,
-              lineHeight: 28,
-              fontStyle: 'italic',
-              color: textColor,
-              marginBottom: 4,
-            }}
+            style={[
+              m3Type.bodyLarge,
+              {
+                fontStyle: 'italic',
+                color: textColor,
+                marginBottom: 6,
+                lineHeight: 26,
+              },
+            ]}
           >
             {trimmed}
           </Text>
         );
       })}
     </View>
+  );
+}
+
+function SettingsPlaceholderIcon({ color }: { color: string }) {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.8" />
+      <Path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -92,7 +119,7 @@ function StudySettingsModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const c = useTheme();
+  const m3 = useM3Theme();
   const [issueNum, setIssueNum] = useState(String(state.issue_number));
   const [toSelf, setToSelf] = useState(state.to_self_text);
 
@@ -145,103 +172,67 @@ function StudySettingsModal({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
-      >
-        <View style={[styles.sheet, { backgroundColor: c.background }]}>
-          <View style={styles.sheetHeaderRow}>
-            <Text style={[type.title, { color: c.text }]}>The Study Settings</Text>
-            <Pressable onPress={onClose}>
-              <Text style={[type.body, { color: c.textSecondary }]}>Close</Text>
-            </Pressable>
-          </View>
+    <M3BottomSheet visible={visible} onClose={onClose} title="The Study Settings">
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant, marginBottom: 6 }]}>
+          Issue Number
+        </Text>
+        <TextInput
+          value={issueNum}
+          onChangeText={setIssueNum}
+          keyboardType="number-pad"
+          style={[
+            styles.m3Input,
+            {
+              color: m3.onSurface,
+              borderColor: m3.outlineVariant,
+              backgroundColor: m3.surfaceContainerHighest,
+            },
+          ]}
+        />
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.xs }]}>
-              Issue Number
-            </Text>
-            <TextInput
-              value={issueNum}
-              onChangeText={setIssueNum}
-              keyboardType="number-pad"
-              style={[styles.input, { color: c.text, borderColor: c.separator }]}
-            />
+        <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant, marginTop: 16, marginBottom: 6 }]}>
+          To Self (Personal Note)
+        </Text>
+        <TextInput
+          value={toSelf}
+          onChangeText={setToSelf}
+          placeholder="Write your note to self..."
+          placeholderTextColor={m3.onSurfaceVariant}
+          multiline
+          style={[
+            styles.m3Input,
+            {
+              color: m3.onSurface,
+              borderColor: m3.outlineVariant,
+              backgroundColor: m3.surfaceContainerHighest,
+              minHeight: 110,
+              textAlignVertical: 'top',
+            },
+          ]}
+        />
 
-            <Text style={[type.caption, { color: c.textSecondary, marginTop: spacing.md }]}>
-              To Self (Personal Note)
-            </Text>
-            <TextInput
-              value={toSelf}
-              onChangeText={setToSelf}
-              placeholder="Write your note to self..."
-              placeholderTextColor={c.textSecondary}
-              multiline
-              style={[
-                styles.input,
-                {
-                  color: c.text,
-                  borderColor: c.separator,
-                  minHeight: 100,
-                  textAlignVertical: 'top',
-                },
-              ]}
-            />
-
-            <View style={{ marginTop: spacing.lg }}>
-              <Pressable
-                onPress={handleSave}
-                style={[styles.primaryBtn, { backgroundColor: c.accent }]}
-              >
-                <Text style={{ color: c.accentText, fontWeight: '700', fontSize: 16 }}>
-                  SAVE SETTINGS
-                </Text>
-              </Pressable>
-            </View>
-
-            <View style={{ marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm }}>
-              <Pressable
-                onPress={handleAdvanceIssue}
-                style={[
-                  styles.secondaryBtn,
-                  { borderColor: c.separator, backgroundColor: c.surface, flex: 1 },
-                ]}
-              >
-                <Text style={{ color: c.text, fontSize: 13, fontWeight: '600' }}>
-                  Advance (+1)
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={handleReshuffleQuotes}
-                style={[
-                  styles.secondaryBtn,
-                  { borderColor: c.separator, backgroundColor: c.surface, flex: 1 },
-                ]}
-              >
-                <Text style={{ color: c.text, fontSize: 13, fontWeight: '600' }}>
-                  Shuffle Quotes
-                </Text>
-              </Pressable>
-            </View>
-          </ScrollView>
+        <View style={{ marginTop: 24 }}>
+          <M3FilledButton label="SAVE SETTINGS" onPress={handleSave} />
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+
+        <View style={{ marginTop: 12, flexDirection: 'row', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <M3TonalButton label="Advance (+1)" onPress={handleAdvanceIssue} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <M3TonalButton label="Shuffle Quotes" onPress={handleReshuffleQuotes} />
+          </View>
+        </View>
+      </ScrollView>
+    </M3BottomSheet>
   );
 }
 
 export function StudyScreen({ onBack }: { onBack: () => void }) {
-  const c = useTheme();
-  const scheme = useColorScheme();
+  const m3 = useM3Theme();
   const [state, setState] = useState<NewsletterState | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-
-  const paperBg = c.background;
-  const paperText = c.text;
-  const paperMuted = c.textSecondary;
-  const paperRule = c.separator;
 
   const load = useCallback(async () => {
     const s = await getNewsletterState();
@@ -291,65 +282,55 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: paperBg }}>
-      {/* Top Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingTop: Platform.OS === 'ios' ? 48 : 36,
-          paddingBottom: spacing.sm,
-          paddingHorizontal: spacing.md,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: c.separator,
-          backgroundColor: paperBg,
-        }}
-      >
-        <Pressable onPress={onBack} hitSlop={8} style={{ width: 100 }}>
-          <Text style={{ fontFamily: 'EBGaramond_500Medium', fontSize: 17, color: paperText }}>‹ Pallas</Text>
-        </Pressable>
-        <Text style={[type.bodyMedium, { color: paperMuted, fontWeight: '600', letterSpacing: 1 }]}>
-          THE STUDY
-        </Text>
-        <Pressable
-          onPress={() => setShowSettings(true)}
-          hitSlop={8}
-          style={{ width: 100, alignItems: 'flex-end' }}
-        >
-          <Text style={{ fontSize: 20 }}>⚙️</Text>
-        </Pressable>
-      </View>
+    <View style={{ flex: 1, backgroundColor: m3.surface }}>
+      {/* M3 Top App Bar with Garamond back button */}
+      <M3TopAppBar
+        title="THE STUDY"
+        onBack={onBack}
+        actionButton={
+          <M3Pressable
+            onPress={() => setShowSettings(true)}
+            hitSlop={12}
+            scaleTo={0.88}
+            style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <SettingsPlaceholderIcon color={m3.primary} />
+          </M3Pressable>
+        }
+      />
+
 
       <ScrollView
         contentContainerStyle={{
-          paddingHorizontal: spacing.lg,
-          paddingTop: spacing.xl,
-          paddingBottom: spacing.xl * 3,
-          maxWidth: 600,
+          paddingHorizontal: 20,
+          paddingTop: 24,
+          paddingBottom: 64,
+          maxWidth: 640,
           alignSelf: 'center',
           width: '100%',
         }}
+        showsVerticalScrollIndicator={false}
       >
         {/* Masthead */}
-        <View
+        <M3Card
+          containerLevel="surfaceContainerHigh"
+          shape="extraLarge"
           style={{
             alignItems: 'center',
-            borderBottomWidth: 3,
-            borderBottomColor: paperRule,
-            paddingBottom: spacing.lg,
-            marginBottom: spacing.xl,
+            paddingVertical: 24,
+            marginBottom: 20,
           }}
         >
           <Text
-            style={{
-              fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-              fontSize: 34,
-              fontWeight: '400',
-              textTransform: 'uppercase',
-              letterSpacing: 4,
-              color: paperText,
-            }}
+            style={[
+              m3Type.headlineLarge,
+              {
+                textTransform: 'uppercase',
+                letterSpacing: 3,
+                color: m3.onSurface,
+                fontWeight: '700',
+              },
+            ]}
           >
             The Study
           </Text>
@@ -357,111 +338,121 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
           <View
             style={{
               borderTopWidth: 1,
-              borderColor: paperRule,
-              paddingTop: 6,
-              marginTop: spacing.xs,
+              borderColor: m3.outlineVariant,
+              paddingTop: 10,
+              marginTop: 10,
               alignItems: 'center',
+              width: '80%',
             }}
           >
             <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '700',
-                letterSpacing: 2,
-                color: paperText,
-              }}
+              style={[
+                m3Type.labelLarge,
+                {
+                  letterSpacing: 2,
+                  color: m3.primary,
+                  fontWeight: '700',
+                },
+              ]}
             >
               ISSUE #{issueNum}
             </Text>
             <Text
-              style={{
-                fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-                fontSize: 12,
-                fontStyle: 'italic',
-                color: paperMuted,
-                marginTop: 3,
-              }}
+              style={[
+                m3Type.bodySmall,
+                {
+                  color: m3.onSurfaceVariant,
+                  marginTop: 2,
+                },
+              ]}
             >
               {dateFormatted}
             </Text>
           </View>
-        </View>
+        </M3Card>
 
         {/* Section: To Self */}
-        <View style={{ marginBottom: spacing.xl }}>
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ marginBottom: 16 }}
+        >
           <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              color: paperMuted,
-              borderBottomWidth: 1,
-              borderColor: paperRule,
-              paddingBottom: 4,
-              marginBottom: spacing.md,
-            }}
+            style={[
+              m3Type.labelLarge,
+              {
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                color: m3.primary,
+                marginBottom: 12,
+              },
+            ]}
           >
             To Self
           </Text>
 
           {state?.to_self_text ? (
             <Text
-              style={{
-                fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-                fontSize: 17,
-                lineHeight: 28,
-                fontStyle: 'italic',
-                color: paperText,
-              }}
+              style={[
+                m3Type.bodyLarge,
+                {
+                  lineHeight: 26,
+                  fontStyle: 'italic',
+                  color: m3.onSurface,
+                },
+              ]}
             >
               {state.to_self_text}
             </Text>
           ) : (
-            <Pressable onPress={() => setShowSettings(true)}>
+            <M3Pressable onPress={() => setShowSettings(true)}>
               <Text
-                style={{
-                  fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-                  fontSize: 15,
-                  fontStyle: 'italic',
-                  color: paperMuted,
-                  paddingVertical: spacing.xs,
-                }}
+                style={[
+                  m3Type.bodyMedium,
+                  {
+                    fontStyle: 'italic',
+                    color: m3.onSurfaceVariant,
+                    paddingVertical: 4,
+                  },
+                ]}
               >
-                Tap here or ⚙️ in the top right to write your note to self...
+                Tap here to write your note to self...
               </Text>
-            </Pressable>
+            </M3Pressable>
           )}
-        </View>
+        </M3Card>
 
         {/* Section: From the Archives */}
-        <View style={{ marginBottom: spacing.xl }}>
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ marginBottom: 16 }}
+        >
           <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              color: paperMuted,
-              borderBottomWidth: 1,
-              borderColor: paperRule,
-              paddingBottom: 4,
-              marginBottom: spacing.md,
-            }}
+            style={[
+              m3Type.labelLarge,
+              {
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                color: m3.primary,
+                marginBottom: 12,
+              },
+            ]}
           >
             From the Archives
           </Text>
 
           {state?.archive_quote_1 ? (
-            <View style={{ marginBottom: spacing.md }}>
+            <View style={{ marginBottom: 14 }}>
               <Text
-                style={{
-                  fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-                  fontSize: 17,
-                  lineHeight: 28,
-                  fontStyle: 'italic',
-                  color: paperText,
-                }}
+                style={[
+                  m3Type.bodyLarge,
+                  {
+                    lineHeight: 26,
+                    fontStyle: 'italic',
+                    color: m3.onSurface,
+                  },
+                ]}
               >
                 "{state.archive_quote_1}"
               </Text>
@@ -469,114 +460,95 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
           ) : null}
 
           {state?.archive_quote_2 ? (
-            <View style={{ marginBottom: spacing.md }}>
+            <View>
               <Text
-                style={{
-                  fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-                  fontSize: 17,
-                  lineHeight: 28,
-                  fontStyle: 'italic',
-                  color: paperText,
-                }}
+                style={[
+                  m3Type.bodyLarge,
+                  {
+                    lineHeight: 26,
+                    fontStyle: 'italic',
+                    color: m3.onSurface,
+                  },
+                ]}
               >
                 "{state.archive_quote_2}"
               </Text>
             </View>
           ) : null}
-        </View>
+        </M3Card>
 
         {/* Section: Tao Te Ching */}
-        <View style={{ marginBottom: spacing.xl }}>
+        <M3Card
+          containerLevel="surfaceContainer"
+          shape="largeIncreased"
+          style={{ marginBottom: 16 }}
+        >
           <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              color: paperMuted,
-              borderBottomWidth: 1,
-              borderColor: paperRule,
-              paddingBottom: 4,
-              marginBottom: spacing.sm,
-            }}
+            style={[
+              m3Type.labelLarge,
+              {
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                color: m3.primary,
+                marginBottom: 12,
+              },
+            ]}
           >
             Tao Te Ching
           </Text>
 
-          {renderTaoTeChing(dailyPoem, paperText)}
-        </View>
+          {renderTaoTeChing(dailyPoem, m3.onSurface)}
+        </M3Card>
 
         {/* Footer */}
         <View
           style={{
             borderTopWidth: 1,
-            borderColor: paperRule,
-            paddingTop: spacing.md,
+            borderColor: m3.outlineVariant,
+            paddingTop: 16,
             alignItems: 'center',
-            marginTop: spacing.lg,
+            marginTop: 12,
           }}
         >
           <Text
-            style={{
-              fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-              fontSize: 13,
-              fontStyle: 'italic',
-              color: paperMuted,
-            }}
+            style={[
+              m3Type.labelMedium,
+              {
+                fontStyle: 'italic',
+                color: m3.onSurfaceVariant,
+              },
+            ]}
           >
             — End of Edition —
           </Text>
         </View>
       </ScrollView>
 
-      {/* Settings Modal */}
-      {state && (
-        <StudySettingsModal
-          visible={showSettings}
-          state={state}
-          onClose={() => setShowSettings(false)}
-          onSaved={load}
-        />
-      )}
+      {/* Settings Modal — always mounted so gear tap before load doesn't silently fail */}
+      <StudySettingsModal
+        visible={showSettings && state !== null}
+        state={state ?? { id: 1, issue_number: 1, to_self_text: '', last_issue_date: '', archive_quote_1: '', archive_quote_2: '' }}
+        onClose={() => setShowSettings(false)}
+        onSaved={load}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  modalWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
+  m3Input: {
+    borderWidth: 1,
+    borderRadius: m3Shape.medium,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
   },
-  sheet: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl,
-    maxHeight: '85%',
-  },
-  sheetHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  gearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 16,
-    marginTop: spacing.xs,
-  },
-  primaryBtn: {
-    paddingVertical: spacing.md,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-  },
-  secondaryBtn: {
-    paddingVertical: spacing.sm + 4,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
   },
 });
+
