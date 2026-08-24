@@ -16,7 +16,14 @@
     "plugins": [
       "expo-asset",
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      "expo-build-properties",
+      "expo-build-properties",
+        {
+          "android": {
+            "enablePngCrunchInReleaseBuilds": false
+          }
+        }
     ],
     "extra": {
       "eas": {
