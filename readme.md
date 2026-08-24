@@ -167,20 +167,19 @@ The SQL console allows raw `SELECT`, `INSERT`, `UPDATE`, and `DELETE` statements
 
 ## Design
 
-Pallas uses a restrained visual system inspired by Apple's minimalist design philosophy.
+Pallas uses Material 3 Expressive design principles everywhere except into the `Vade Mecum` mini-app. Vade Mecum is meant to resemble a parchament, and hence it's design is very different from the rest of the app. Aside from Vade Mecum, Material 3 Expressive is used wherever possible.
 
-The guiding principle is **via negativa**: remove rather than add.
+EB Garamond is used for the `Pallas` brand and tagline. 
+
+The guiding principle is **via negativa**: remove rather than add. The design is meant to emphasize what is important and remove what is unimportant or unnecessary. 
 
 The interface should prioritize:
 
-* minimal navigation;
 * clear typography;
-* restrained use of color;
 * direct manipulation of data;
 * no unnecessary onboarding;
 * no gamification;
 * no social features;
-* no cloud dependency.
 
 Pallas is built for one person. It does not optimize for hypothetical users at the expense of simplicity.
 

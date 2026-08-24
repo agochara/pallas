@@ -18,6 +18,15 @@ import { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme } from './theme';
 // M3 EXPRESSIVE SPRING-BASED PRESSABLE
 // ============================================================================
 
+// Cache reduce motion globally to prevent state thrashing/re-renders on mount
+let isReduceMotionActive = false;
+AccessibilityInfo.isReduceMotionEnabled().then((res) => {
+  isReduceMotionActive = res;
+});
+AccessibilityInfo.addEventListener('reduceMotionChanged', (res) => {
+  isReduceMotionActive = res;
+});
+
 export function M3Pressable({
   children,
   onPress,
@@ -37,16 +46,11 @@ export function M3Pressable({
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const [pressed, setPressed] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
 
   const handlePressIn = () => {
     if (disabled) return;
     setPressed(true);
-    if (!reduceMotion) {
+    if (!isReduceMotionActive) {
       Animated.spring(scale, {
         toValue: scaleTo,
         damping: springConfig.damping,
@@ -59,7 +63,7 @@ export function M3Pressable({
 
   const handlePressOut = () => {
     setPressed(false);
-    if (!reduceMotion) {
+    if (!isReduceMotionActive) {
       Animated.spring(scale, {
         toValue: 1,
         damping: springConfig.damping,
@@ -186,7 +190,7 @@ export function M3FilledButton({
         style,
       ]}
     >
-      <Text style={[m3Type.labelLarge, { color: m3.onPrimary, textAlign: 'center' }, textStyle]}>
+      <Text style={[m3Type.labelLargeEmphasized, { color: m3.onPrimary, textAlign: 'center' }, textStyle]}>
         {label}
       </Text>
     </M3Pressable>
@@ -220,7 +224,7 @@ export function M3TonalButton({
         style,
       ]}
     >
-      <Text style={[m3Type.labelLarge, { color: m3.onSecondaryContainer, textAlign: 'center' }, textStyle]}>
+      <Text style={[m3Type.labelLargeEmphasized, { color: m3.onSecondaryContainer, textAlign: 'center' }, textStyle]}>
         {label}
       </Text>
     </M3Pressable>
@@ -255,7 +259,7 @@ export function M3OutlinedButton({
         style,
       ]}
     >
-      <Text style={[m3Type.labelLarge, { color: m3.onSurface, textAlign: 'center' }, textStyle]}>
+      <Text style={[m3Type.labelLargeEmphasized, { color: m3.onSurface, textAlign: 'center' }, textStyle]}>
         {label}
       </Text>
     </M3Pressable>
@@ -289,9 +293,63 @@ export function M3ErrorButton({
         style,
       ]}
     >
-      <Text style={[m3Type.labelLarge, { color: m3.onErrorContainer, textAlign: 'center' }, textStyle]}>
+      <Text style={[m3Type.labelLargeEmphasized, { color: m3.onErrorContainer, textAlign: 'center' }, textStyle]}>
         {label}
       </Text>
+    </M3Pressable>
+  );
+}
+
+// ============================================================================
+// M3 EXPRESSIVE FAB (FLOATING ACTION BUTTON)
+// ============================================================================
+
+export function M3FAB({
+  label,
+  onPress,
+  icon,
+  style,
+}: {
+  label?: string;
+  onPress: () => void;
+  icon?: React.ReactNode;
+  style?: any;
+}) {
+  const m3 = useM3Theme();
+  
+  return (
+    <M3Pressable
+      onPress={onPress}
+      scaleTo={0.92}
+      style={[
+        {
+          position: 'absolute',
+          bottom: 24,
+          right: 24,
+          backgroundColor: m3.primaryContainer,
+          borderRadius: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: label ? 20 : 16,
+          height: 56,
+          minWidth: 56,
+          shadowColor: m3.scrim,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          elevation: 4,
+          zIndex: 100,
+        },
+        style,
+      ]}
+    >
+      {icon && <View style={label ? { marginRight: 8 } : {}}>{icon}</View>}
+      {label && (
+        <Text style={[m3Type.labelLargeEmphasized, { color: m3.onPrimaryContainer }]}>
+          {label}
+        </Text>
+      )}
     </M3Pressable>
   );
 }
@@ -331,10 +389,9 @@ export function M3SegmentedButton<T extends string>({
           >
             <Text
               style={[
-                m3Type.labelMedium,
+                active ? m3Type.labelMediumEmphasized : m3Type.labelMedium,
                 {
                   color: active ? m3.onSecondaryContainer : m3.onSurfaceVariant,
-                  fontWeight: active ? '500' : '400',
                   textAlign: 'center',
                 },
               ]}
@@ -368,7 +425,6 @@ export function M3TopAppBar({
         styles.topBar,
         {
           backgroundColor: m3.surface,
-          borderBottomColor: m3.outlineVariant,
         },
       ]}
     >
@@ -379,12 +435,11 @@ export function M3TopAppBar({
       </Pressable>
       <Text
         style={[
-          m3Type.labelLarge,
+          m3Type.labelLargeEmphasized,
           {
             color: m3.onSurfaceVariant,
             letterSpacing: 1.5,
             textTransform: 'uppercase',
-            fontWeight: '600',
           },
         ]}
       >
@@ -411,18 +466,55 @@ export function M3BottomSheet({
   children: React.ReactNode;
 }) {
   const m3 = useM3Theme();
+  
+  // Use a local state to delay unmounting so the exit animation can play
+  const [show, setShow] = React.useState(visible);
+  const animValue = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      setShow(true);
+      Animated.timing(animValue, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    } else if (show) {
+      Animated.timing(animValue, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setShow(false);
+      });
+    }
+  }, [visible]);
+
+  if (!show) return null;
+
+  const translateY = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [600, 0], // slide up from 600px down
+  });
+
+  const opacity = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={show} animationType="none" transparent onRequestClose={onClose}>
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.4)', opacity }]} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalWrap}
+        style={[styles.modalWrap, { backgroundColor: 'transparent' }]}
       >
-        <View style={[styles.sheetContent, { backgroundColor: m3.surfaceContainerHigh }]}>
+        <Animated.View style={[styles.sheetContent, { backgroundColor: m3.surfaceContainerHigh, transform: [{ translateY }] }]}>
           {/* M3 Standard Drag Handle */}
           <View style={[styles.dragHandle, { backgroundColor: m3.outlineVariant }]} />
 
           <View style={styles.sheetHeader}>
-            <Text style={[m3Type.titleLarge, { color: m3.onSurface }]}>{title}</Text>
+            <Text style={[m3Type.titleLargeEmphasized, { color: m3.onSurface }]}>{title}</Text>
             <M3Pressable
               onPress={onClose}
               hitSlop={12}
@@ -433,7 +525,7 @@ export function M3BottomSheet({
             </M3Pressable>
           </View>
           {children}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -493,7 +585,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 48 : (StatusBar.currentHeight ?? 24) + 8,
     paddingBottom: 10,
     paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
     minWidth: 70,
@@ -505,7 +596,6 @@ const styles = StyleSheet.create({
   modalWrap: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   sheetContent: {
     borderTopLeftRadius: m3Shape.extraLargeIncreased,
@@ -536,5 +626,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
 
 

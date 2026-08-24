@@ -1,4 +1,67 @@
-import { useColorScheme, StyleSheet } from 'react-native';
+import { useColorScheme, StyleSheet, Platform } from 'react-native';
+
+const fontSans = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  default: 'sans-serif',
+});
+
+// ---------------------------------------------------------------------------
+// Typography scale  (Official M3 Expressive — 15 Baseline + 15 Emphasized)
+//
+// Baseline:
+//   • Display / Headline / Body: Regular (400)
+//   • Title / Label: Medium (500)
+// Emphasized (M3 Expressive additions for focal points, CTAs & headers):
+//   • Display: Bold (700)
+//   • Headline / Title: SemiBold (600)
+//   • Body: Medium (500)
+//   • Label: Bold (700)
+// ---------------------------------------------------------------------------
+
+export const m3Type = StyleSheet.create({
+  // Baseline Styles (15 styles)
+  displayLarge:   { fontFamily: fontSans, fontSize: 57, lineHeight: 64, fontWeight: '400', letterSpacing: -0.25 },
+  displayMedium:  { fontFamily: fontSans, fontSize: 45, lineHeight: 52, fontWeight: '400', letterSpacing: 0 },
+  displaySmall:   { fontFamily: fontSans, fontSize: 36, lineHeight: 44, fontWeight: '400', letterSpacing: 0 },
+
+  headlineLarge:  { fontFamily: fontSans, fontSize: 32, lineHeight: 40, fontWeight: '400', letterSpacing: 0 },
+  headlineMedium: { fontFamily: fontSans, fontSize: 28, lineHeight: 36, fontWeight: '400', letterSpacing: 0 },
+  headlineSmall:  { fontFamily: fontSans, fontSize: 24, lineHeight: 32, fontWeight: '400', letterSpacing: 0 },
+
+  titleLarge:     { fontFamily: fontSans, fontSize: 22, lineHeight: 28, fontWeight: '400', letterSpacing: 0 },
+  titleMedium:    { fontFamily: fontSans, fontSize: 16, lineHeight: 24, fontWeight: '500', letterSpacing: 0.15 },
+  titleSmall:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0.1 },
+
+  bodyLarge:      { fontFamily: fontSans, fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0.5 },
+  bodyMedium:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '400', letterSpacing: 0.25 },
+  bodySmall:      { fontFamily: fontSans, fontSize: 12, lineHeight: 16, fontWeight: '400', letterSpacing: 0.4 },
+
+  labelLarge:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0.1 },
+  labelMedium:    { fontFamily: fontSans, fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.5 },
+  labelSmall:     { fontFamily: fontSans, fontSize: 11, lineHeight: 16, fontWeight: '500', letterSpacing: 0.5 },
+
+  // Emphasized Styles (15 styles — M3 Expressive)
+  displayLargeEmphasized:   { fontFamily: fontSans, fontSize: 57, lineHeight: 64, fontWeight: '700', letterSpacing: -0.25 },
+  displayMediumEmphasized:  { fontFamily: fontSans, fontSize: 45, lineHeight: 52, fontWeight: '700', letterSpacing: 0 },
+  displaySmallEmphasized:   { fontFamily: fontSans, fontSize: 36, lineHeight: 44, fontWeight: '700', letterSpacing: 0 },
+
+  headlineLargeEmphasized:  { fontFamily: fontSans, fontSize: 32, lineHeight: 40, fontWeight: '600', letterSpacing: 0 },
+  headlineMediumEmphasized: { fontFamily: fontSans, fontSize: 28, lineHeight: 36, fontWeight: '600', letterSpacing: 0 },
+  headlineSmallEmphasized:  { fontFamily: fontSans, fontSize: 24, lineHeight: 32, fontWeight: '600', letterSpacing: 0 },
+
+  titleLargeEmphasized:     { fontFamily: fontSans, fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: 0 },
+  titleMediumEmphasized:    { fontFamily: fontSans, fontSize: 16, lineHeight: 24, fontWeight: '600', letterSpacing: 0.15 },
+  titleSmallEmphasized:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '600', letterSpacing: 0.1 },
+
+  bodyLargeEmphasized:      { fontFamily: fontSans, fontSize: 16, lineHeight: 24, fontWeight: '500', letterSpacing: 0.5 },
+  bodyMediumEmphasized:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0.25 },
+  bodySmallEmphasized:      { fontFamily: fontSans, fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.4 },
+
+  labelLargeEmphasized:     { fontFamily: fontSans, fontSize: 14, lineHeight: 20, fontWeight: '700', letterSpacing: 0.1 },
+  labelMediumEmphasized:    { fontFamily: fontSans, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.5 },
+  labelSmallEmphasized:     { fontFamily: fontSans, fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 0.5 },
+});
 import {
   Hct,
   SchemeExpressive,
@@ -64,12 +127,6 @@ export interface M3Theme {
   // Pallas brand blue accent (harmonized toward seed)
   pallasBlue: string;
   onPallasBlue: string;
-
-  // Progressive Fasting scale (Harmonized HCT, high-contrast in both light and dark)
-  fastingUnder12: string;
-  fasting12to16: string;
-  fasting16to24: string;
-  fasting24plus: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,31 +155,6 @@ export const motionSprings = {
   expressiveSlow:    { damping: 22, stiffness: 120, mass: 1.0 },
 };
 
-// ---------------------------------------------------------------------------
-// Typography scale  (M3 Expressive — 5 roles × 3 sizes = 15 styles)
-// ---------------------------------------------------------------------------
-
-export const m3Type = StyleSheet.create({
-  displayLarge:   { fontSize: 57, lineHeight: 64, fontWeight: '400', letterSpacing: -0.25 },
-  displayMedium:  { fontSize: 45, lineHeight: 52, fontWeight: '400', letterSpacing: 0 },
-  displaySmall:   { fontSize: 36, lineHeight: 44, fontWeight: '400', letterSpacing: 0 },
-
-  headlineLarge:  { fontSize: 32, lineHeight: 40, fontWeight: '400', letterSpacing: 0 },
-  headlineMedium: { fontSize: 28, lineHeight: 36, fontWeight: '400', letterSpacing: 0 },
-  headlineSmall:  { fontSize: 24, lineHeight: 32, fontWeight: '400', letterSpacing: 0 },
-
-  titleLarge:     { fontSize: 22, lineHeight: 28, fontWeight: '500', letterSpacing: 0 },
-  titleMedium:    { fontSize: 16, lineHeight: 24, fontWeight: '500', letterSpacing: 0.15 },
-  titleSmall:     { fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0.1 },
-
-  bodyLarge:      { fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0.5 },
-  bodyMedium:     { fontSize: 14, lineHeight: 20, fontWeight: '400', letterSpacing: 0.25 },
-  bodySmall:      { fontSize: 12, lineHeight: 16, fontWeight: '400', letterSpacing: 0.4 },
-
-  labelLarge:     { fontSize: 14, lineHeight: 20, fontWeight: '500', letterSpacing: 0.1 },
-  labelMedium:    { fontSize: 12, lineHeight: 16, fontWeight: '500', letterSpacing: 0.5 },
-  labelSmall:     { fontSize: 11, lineHeight: 16, fontWeight: '500', letterSpacing: 0.5 },
-});
 
 // ---------------------------------------------------------------------------
 // M3 Expressive theme generator
@@ -167,36 +199,10 @@ export function generateM3Theme(
     blend: true,
   });
 
-  // Progressive Fasting Gradient Custom Colors (blend: false to preserve distinct hues)
-  const fastingUnder12Group = customColor(sourceArgb, {
-    value: argbFromHex('#78909C'), // Cool Slate Grey (Neutral)
-    name: 'fastingUnder12',
-    blend: false,
-  });
-  const fasting12to16Group = customColor(sourceArgb, {
-    value: argbFromHex('#0284C7'), // Vivid Ocean Blue
-    name: 'fasting12to16',
-    blend: false,
-  });
-  const fasting16to24Group = customColor(sourceArgb, {
-    value: argbFromHex('#10B981'), // Vivid Emerald Green
-    name: 'fasting16to24',
-    blend: false,
-  });
-  const fasting24plusGroup = customColor(sourceArgb, {
-    value: argbFromHex('#F59E0B'), // Vivid Amber Gold
-    name: 'fasting24plus',
-    blend: false,
-  });
-
   function buildFrom(
     scheme: SchemeExpressive,
     successVariant: typeof successGroup.light,
     blueVariant: typeof blueGroup.light,
-    fUnder12: typeof fastingUnder12Group.light,
-    f12to16: typeof fasting12to16Group.light,
-    f16to24: typeof fasting16to24Group.light,
-    f24plus: typeof fasting24plusGroup.light,
   ): M3Theme {
     const roles = {} as Record<StandardRoleKey, string>;
     for (const key of ROLE_KEYS) {
@@ -218,33 +224,12 @@ export function generateM3Theme(
 
       pallasBlue:   hexFromArgb(blueVariant.color),
       onPallasBlue: hexFromArgb(blueVariant.onColor),
-
-      fastingUnder12: hexFromArgb(fUnder12.color),
-      fasting12to16:  hexFromArgb(f12to16.color),
-      fasting16to24:  hexFromArgb(f16to24.color),
-      fasting24plus:  hexFromArgb(f24plus.color),
     };
   }
 
   return {
-    light: buildFrom(
-      lightScheme,
-      successGroup.light,
-      blueGroup.light,
-      fastingUnder12Group.light,
-      fasting12to16Group.light,
-      fasting16to24Group.light,
-      fasting24plusGroup.light,
-    ),
-    dark:  buildFrom(
-      darkScheme,
-      successGroup.dark,
-      blueGroup.dark,
-      fastingUnder12Group.dark,
-      fasting12to16Group.dark,
-      fasting16to24Group.dark,
-      fasting24plusGroup.dark,
-    ),
+    light: buildFrom(lightScheme, successGroup.light, blueGroup.light),
+    dark:  buildFrom(darkScheme,  successGroup.dark,  blueGroup.dark),
   };
 }
 
@@ -252,7 +237,7 @@ export function generateM3Theme(
 // Module-level singletons — computed once at startup, never per-render
 // ---------------------------------------------------------------------------
 
-export const { light: m3Light, dark: m3Dark } = generateM3Theme('#63A002');
+export const { light: m3Light, dark: m3Dark } = generateM3Theme('#769CDF');
 
 export function useM3Theme(): M3Theme {
   const scheme = useColorScheme();

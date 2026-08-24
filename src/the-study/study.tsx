@@ -56,11 +56,10 @@ function renderTaoTeChing(poemHtml: string, textColor: string) {
       {title && (
         <Text
           style={[
-            m3Type.titleMedium,
+            m3Type.titleMediumEmphasized,
             {
               color: textColor,
               marginBottom: 12,
-              fontWeight: '700',
             },
           ]}
         >
@@ -323,12 +322,11 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
         >
           <Text
             style={[
-              m3Type.headlineLarge,
+              m3Type.headlineLargeEmphasized,
               {
                 textTransform: 'uppercase',
                 letterSpacing: 3,
                 color: m3.onSurface,
-                fontWeight: '700',
               },
             ]}
           >
@@ -347,11 +345,10 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
           >
             <Text
               style={[
-                m3Type.labelLarge,
+                m3Type.labelLargeEmphasized,
                 {
                   letterSpacing: 2,
                   color: m3.primary,
-                  fontWeight: '700',
                 },
               ]}
             >
@@ -371,27 +368,27 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
           </View>
         </M3Card>
 
-        {/* Section: To Self */}
-        <M3Card
-          containerLevel="surfaceContainer"
-          shape="largeIncreased"
-          style={{ marginBottom: 16 }}
-        >
-          <Text
-            style={[
-              m3Type.labelLarge,
-              {
-                letterSpacing: 1.5,
-                textTransform: 'uppercase',
-                color: m3.primary,
-                marginBottom: 12,
-              },
-            ]}
+        {/* Section: To Self (only displayed when non-empty) */}
+        {!!state?.to_self_text?.trim() && (
+          <M3Card
+            containerLevel="surfaceContainer"
+            shape="largeIncreased"
+            style={{ marginBottom: 16 }}
           >
-            To Self
-          </Text>
+            <Text
+              style={[
+                m3Type.labelLargeEmphasized,
+                {
+                  letterSpacing: 1.5,
+                  textTransform: 'uppercase',
+                  color: m3.primary,
+                  marginBottom: 12,
+                },
+              ]}
+            >
+              To Self
+            </Text>
 
-          {state?.to_self_text ? (
             <Text
               style={[
                 m3Type.bodyLarge,
@@ -404,23 +401,8 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
             >
               {state.to_self_text}
             </Text>
-          ) : (
-            <M3Pressable onPress={() => setShowSettings(true)}>
-              <Text
-                style={[
-                  m3Type.bodyMedium,
-                  {
-                    fontStyle: 'italic',
-                    color: m3.onSurfaceVariant,
-                    paddingVertical: 4,
-                  },
-                ]}
-              >
-                Tap here to write your note to self...
-              </Text>
-            </M3Pressable>
-          )}
-        </M3Card>
+          </M3Card>
+        )}
 
         {/* Section: From the Archives */}
         <M3Card
@@ -430,7 +412,7 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
         >
           <Text
             style={[
-              m3Type.labelLarge,
+              m3Type.labelLargeEmphasized,
               {
                 letterSpacing: 1.5,
                 textTransform: 'uppercase',
@@ -485,7 +467,7 @@ export function StudyScreen({ onBack }: { onBack: () => void }) {
         >
           <Text
             style={[
-              m3Type.labelLarge,
+              m3Type.labelLargeEmphasized,
               {
                 letterSpacing: 1.5,
                 textTransform: 'uppercase',

@@ -6,10 +6,13 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
-  BackHandler,
+  StatusBar as RNStatusBar,
 } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import Svg, {
   Rect,
@@ -39,8 +42,21 @@ import {
   EBGaramond_400Regular_Italic,
 } from '@expo-google-fonts/eb-garamond';
 
-type AppId = 'home' | 'study' | 'vade-mecum' | 'askesis' | 'settings';
 type AskesisTab = 'fasting' | 'strength' | 'weight';
+
+export type RootStackParamList = {
+  Home: undefined;
+  Study: undefined;
+  VadeMecum: undefined;
+  Askesis: undefined;
+  Settings: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const IMG_ASKESIS = require('../assets/a.png');
+const IMG_STUDY = require('../assets/ts.png');
+const IMG_VADE_MECUM = require('../assets/vm.png');
 
 const ASKESIS_TABS: { key: AskesisTab; label: string }[] = [
   { key: 'fasting', label: 'Fasting' },
@@ -96,6 +112,8 @@ function SettingsPlaceholderIcon({ color }: { color: string }) {
 
 function M3LauncherCard({
   title,
+  imageSource,
+  imagePosition,
   containerLevel = 'surfaceContainer',
   shape = 'largeIncreased',
   height,
@@ -103,6 +121,8 @@ function M3LauncherCard({
   onPress,
 }: {
   title: string;
+  imageSource?: any;
+  imagePosition?: any;
   containerLevel?: 'surfaceContainer' | 'surfaceContainerHigh' | 'surfaceContainerHighest' | 'primaryContainer';
   shape?: keyof typeof m3Shape;
   height: number;
@@ -123,10 +143,38 @@ function M3LauncherCard({
           borderRadius,
           height,
           width: '100%',
+          overflow: 'hidden',
         },
       ]}
     >
-      <Text style={[styles.m3LauncherCardTitle, { color: m3.onSurface }, titleStyle]}>
+      {imageSource && (
+        <Image
+          source={imageSource}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          contentPosition={imagePosition || 'center'}
+          transition={0}
+          cachePolicy="memory-disk"
+        />
+      )}
+      {imageSource && (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.15)' }]} />
+      )}
+      <Text 
+        style={[
+          styles.m3LauncherCardTitle, 
+          !imageSource && { color: m3.onSurface },
+          titleStyle,
+          imageSource && { 
+            fontFamily: 'EBGaramond_500Medium',
+            fontSize: (titleStyle?.fontSize || 24) + 6, // Garamond needs a boost to match sans-serif visual weight
+            color: '#FFFFFF',
+            textShadowColor: 'rgba(0,0,0,0.85)',
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 6,
+          }
+        ]}
+      >
         {title}
       </Text>
     </M3Pressable>
@@ -148,7 +196,6 @@ function M3NavigationBar({
         styles.m3NavBar,
         {
           backgroundColor: m3.surfaceContainerLow,
-          borderTopColor: m3.outlineVariant,
         },
       ]}
     >
@@ -178,10 +225,9 @@ function M3NavigationBar({
             </View>
             <Text
               style={[
-                m3Type.labelSmall,
+                active ? m3Type.labelSmallEmphasized : m3Type.labelSmall,
                 {
                   color: active ? m3.onSurface : m3.onSurfaceVariant,
-                  fontWeight: active ? '600' : '400',
                   textAlign: 'center',
                   alignSelf: 'center',
                 },
@@ -197,12 +243,158 @@ function M3NavigationBar({
 }
 
 
-function MainContent() {
+function HomeScreen({ navigation }: any) {
   const m3 = useM3Theme();
 
-  const [ready, setReady] = useState(false);
-  const [currentApp, setCurrentApp] = useState<AppId>('home');
+  return (
+    <View style={[styles.root, { backgroundColor: m3.surface }]}>
+      <StatusBar style="auto" />
+      <ScrollView
+        contentContainerStyle={styles.launcherContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.launcherHeader}>
+          <Text
+            style={{
+              fontFamily: 'EBGaramond_700Bold',
+              fontSize: 34,
+              color: m3.onSurface,
+              letterSpacing: 4,
+              textAlign: 'center',
+            }}
+          >
+            PALLAS
+          </Text>
+
+          {/* Tagline */}
+          <Text
+            style={{
+              fontFamily: 'EBGaramond_400Regular_Italic',
+              fontSize: 12,
+              color: m3.onSurfaceVariant,
+              textAlign: 'center',
+              letterSpacing: 1,
+              marginTop: 6,
+            }}
+          >
+            UNA SALUS VICTIS · NULLAM SPERARE SALUTEM
+          </Text>
+        </View>
+
+        {/* Featured Focal Container: The Study */}
+        <View style={{ marginBottom: 14, width: '100%' }}>
+          <M3LauncherCard
+            title="The Study"
+            imageSource={IMG_STUDY}
+            imagePosition="center"
+            containerLevel="surfaceContainerHigh"
+            shape="extraLarge"
+            height={190}
+            titleStyle={m3Type.headlineMediumEmphasized}
+            onPress={() => navigation.navigate('Study')}
+          />
+        </View>
+
+        {/* 2-Column Secondary Grid */}
+        <View style={styles.secondaryGridRow}>
+          {/* Left Container: Vade Mecum */}
+          <View style={{ flex: 1 }}>
+            <M3LauncherCard
+              title="Vade Mecum"
+              imageSource={IMG_VADE_MECUM}
+              imagePosition="center"
+              containerLevel="surfaceContainerHigh"
+              shape="largeIncreased"
+              height={210}
+              titleStyle={m3Type.titleLargeEmphasized}
+              onPress={() => navigation.navigate('VadeMecum')}
+            />
+          </View>
+
+          {/* Right Container: Askesis */}
+          <View style={{ flex: 1 }}>
+            <M3LauncherCard
+              title="Askesis"
+              imageSource={IMG_ASKESIS}
+              imagePosition={{left: "20%"}}
+              containerLevel="surfaceContainerHigh"
+              shape="largeIncreased"
+              height={210}
+              titleStyle={m3Type.titleLargeEmphasized}
+              onPress={() => navigation.navigate('Askesis')}
+            />
+          </View>
+        </View>
+
+        {/* Subordinate Settings Control */}
+        <View style={styles.settingsWrap}>
+          <M3Pressable
+            onPress={() => navigation.navigate('Settings')}
+            scaleTo={0.96}
+            style={[
+              styles.settingsPill,
+              {
+                backgroundColor: m3.surfaceContainerHigh,
+              },
+            ]}
+          >
+            <SettingsPlaceholderIcon color={m3.primary} />
+            <Text
+              style={[m3Type.labelLargeEmphasized, { color: m3.onSurfaceVariant }]}
+              numberOfLines={1}
+            >
+              Settings
+            </Text>
+          </M3Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function StudyScreenWrapper({ navigation }: any) {
+  return <StudyScreen onBack={() => navigation.goBack()} />;
+}
+
+function VadeMecumScreenWrapper({ navigation }: any) {
+  return <VadeMecumScreen onBack={() => navigation.goBack()} />;
+}
+
+function SettingsScreenWrapper({ navigation }: any) {
+  const m3 = useM3Theme();
+  return (
+    <View style={[styles.root, { backgroundColor: m3.surface }]}>
+      <StatusBar style="auto" />
+      <M3TopAppBar title="Settings" onBack={() => navigation.goBack()} />
+      <View style={styles.content}>
+        <SettingsScreen />
+      </View>
+    </View>
+  );
+}
+
+function AskesisScreenWrapper({ navigation }: any) {
+  const m3 = useM3Theme();
   const [askesisTab, setAskesisTab] = useState<AskesisTab>('fasting');
+
+  return (
+    <View style={[styles.root, { backgroundColor: m3.surface }]}>
+      <StatusBar style="auto" />
+      <M3TopAppBar title="Askesis" onBack={() => navigation.goBack()} />
+      <View style={styles.content}>
+        {askesisTab === 'fasting' && <FastingScreen />}
+        {askesisTab === 'strength' && <StrengthScreen />}
+        {askesisTab === 'weight' && <WeightScreen />}
+      </View>
+      <M3NavigationBar currentTab={askesisTab} onSelectTab={setAskesisTab} />
+    </View>
+  );
+}
+
+function AppRoot() {
+  const m3 = useM3Theme();
+  const [ready, setReady] = useState(false);
 
   const [fontsLoaded] = useFonts({
     EBGaramond_400Regular,
@@ -216,198 +408,25 @@ function MainContent() {
     initDatabase().then(() => setReady(true));
   }, []);
 
-  useEffect(() => {
-    const onBackPress = () => {
-      if (currentApp !== 'home') {
-        setCurrentApp('home');
-        return true;
-      }
-      return false;
-    };
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => backHandler.remove();
-  }, [currentApp]);
-
   if (!ready || !fontsLoaded) {
     return (
-      <View
-        style={[
-          styles.center,
-          { backgroundColor: m3.surface },
-        ]}
-      >
+      <View style={[styles.center, { backgroundColor: m3.surface }]}>
         <ActivityIndicator color={m3.primary} />
       </View>
     );
   }
 
-  // Pallas Launcher Home Screen (Material 3 Expressive)
-  if (currentApp === 'home') {
-    return (
-      <SafeAreaView style={[styles.root, { backgroundColor: m3.surface }]}>
-        <StatusBar style="auto" />
-        <ScrollView
-          contentContainerStyle={styles.launcherContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.launcherHeader}>
-            <Text
-              style={{
-                fontFamily: 'EBGaramond_700Bold',
-                fontSize: 34,
-                color: m3.onSurface,
-                letterSpacing: 4,
-                textAlign: 'center',
-              }}
-            >
-              PALLAS
-            </Text>
-
-            {/* Tagline */}
-            <Text
-              style={{
-                fontFamily: 'EBGaramond_400Regular_Italic',
-                fontSize: 12,
-                color: m3.onSurfaceVariant,
-                textAlign: 'center',
-                letterSpacing: 1,
-                marginTop: 6,
-              }}
-            >
-              UNA SALUS VICTIS · NULLAM SPERARE SALUTEM
-            </Text>
-          </View>
-
-          {/* Featured Focal Container: The Study */}
-          <View style={{ marginBottom: 14, width: '100%' }}>
-            <M3LauncherCard
-              title="The Study"
-              containerLevel="surfaceContainerHigh"
-              shape="extraLarge"
-              height={145}
-              titleStyle={m3Type.headlineMedium}
-              onPress={() => setCurrentApp('study')}
-            />
-          </View>
-
-          {/* 2-Column Secondary Grid */}
-          <View style={styles.secondaryGridRow}>
-            {/* Left Container: Vade Mecum */}
-            <View style={{ flex: 1 }}>
-              <M3LauncherCard
-                title="Vade Mecum"
-                containerLevel="surfaceContainer"
-                shape="largeIncreased"
-                height={175}
-                titleStyle={m3Type.titleLarge}
-                onPress={() => setCurrentApp('vade-mecum')}
-              />
-            </View>
-
-            {/* Right Container: Askesis */}
-            <View style={{ flex: 1 }}>
-              <M3LauncherCard
-                title="Askesis"
-                containerLevel="surfaceContainer"
-                shape="largeIncreased"
-                height={175}
-                titleStyle={m3Type.titleLarge}
-                onPress={() => setCurrentApp('askesis')}
-              />
-            </View>
-          </View>
-
-          {/* Subordinate Settings Control */}
-          <View style={styles.settingsWrap}>
-            <M3Pressable
-              onPress={() => setCurrentApp('settings')}
-              scaleTo={0.96}
-              style={[
-                styles.settingsPill,
-                {
-                  backgroundColor: m3.surfaceContainerHigh,
-                },
-              ]}
-            >
-              <SettingsPlaceholderIcon color={m3.primary} />
-              <Text
-                style={[m3Type.labelLarge, { color: m3.onSurfaceVariant }]}
-                numberOfLines={1}
-              >
-                Settings
-              </Text>
-            </M3Pressable>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  // The Study Screen (Destination's own UI)
-  if (currentApp === 'study') {
-    return <StudyScreen onBack={() => setCurrentApp('home')} />;
-  }
-
-  // Vade Mecum Screen (Destination's own UI)
-  if (currentApp === 'vade-mecum') {
-    return <VadeMecumScreen onBack={() => setCurrentApp('home')} />;
-  }
-
-  // Settings Screen
-  if (currentApp === 'settings') {
-    return (
-      <View style={[styles.root, { backgroundColor: m3.surface }]}>
-        <StatusBar style="auto" />
-        <M3TopAppBar
-          title="Settings"
-          onBack={() => setCurrentApp('home')}
-        />
-        <View style={styles.content}>
-          <SettingsScreen />
-        </View>
-      </View>
-    );
-  }
-
-  // Inside Askesis Container (Material 3 Expressive)
-  if (currentApp === 'askesis') {
-    return (
-      <View
-        style={[
-          styles.root,
-          { backgroundColor: m3.surface },
-        ]}
-      >
-        <StatusBar style="auto" />
-        <M3TopAppBar
-          title="Askesis"
-          onBack={() => setCurrentApp('home')}
-        />
-
-        <View style={styles.content}>
-          {askesisTab === 'fasting' && <FastingScreen />}
-          {askesisTab === 'strength' && <StrengthScreen />}
-          {askesisTab === 'weight' && <WeightScreen />}
-        </View>
-
-        {/* Material 3 Expressive Shared Bottom Navigation Bar */}
-        <M3NavigationBar
-          currentTab={askesisTab}
-          onSelectTab={setAskesisTab}
-        />
-      </View>
-    );
-  }
-}
-
-
-function AppRoot() {
-  const m3 = useM3Theme();
   return (
     <SafeAreaProvider style={{ backgroundColor: m3.surface }}>
-      <MainContent />
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Study" component={StudyScreenWrapper} />
+          <Stack.Screen name="VadeMecum" component={VadeMecumScreenWrapper} />
+          <Stack.Screen name="Askesis" component={AskesisScreenWrapper} />
+          <Stack.Screen name="Settings" component={SettingsScreenWrapper} />
+        </Stack.Navigator>
+      </NavigationContainer>
     </SafeAreaProvider>
   );
 }
@@ -429,7 +448,7 @@ const styles = StyleSheet.create({
 
   launcherContent: {
     paddingHorizontal: 22,
-    paddingTop: Platform.OS === 'ios' ? 44 : 28,
+    paddingTop: Platform.OS === 'ios' ? 48 : (RNStatusBar.currentHeight ?? 24) + 16,
     paddingBottom: 40,
   },
 
@@ -445,13 +464,13 @@ const styles = StyleSheet.create({
   },
 
   m3LauncherCard: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    paddingHorizontal: 24,
+    paddingBottom: 24,
   },
 
   m3LauncherCardTitle: {
-    textAlign: 'center',
     letterSpacing: 0.2,
   },
 
@@ -475,7 +494,6 @@ const styles = StyleSheet.create({
 
   m3NavBar: {
     flexDirection: 'row',
-    borderTopWidth: 1,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 26 : 10,
     height: Platform.OS === 'ios' ? 88 : 80,

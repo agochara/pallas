@@ -92,7 +92,7 @@ function SqlInfoModal({
         {/* Database Tables */}
         <Text
           style={[
-            m3Type.labelLarge,
+            m3Type.labelLargeEmphasized,
             { color: m3.primary, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' },
           ]}
         >
@@ -105,7 +105,7 @@ function SqlInfoModal({
           shape="medium"
           style={{ padding: 14, marginBottom: 10 }}
         >
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
             max_lifts
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
@@ -145,7 +145,7 @@ function SqlInfoModal({
           shape="medium"
           style={{ padding: 14, marginBottom: 10 }}
         >
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
             fasts
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
@@ -185,7 +185,7 @@ function SqlInfoModal({
           shape="medium"
           style={{ padding: 14, marginBottom: 10 }}
         >
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
             weights
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
@@ -225,7 +225,7 @@ function SqlInfoModal({
           shape="medium"
           style={{ padding: 14, marginBottom: 10 }}
         >
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
             vade_mecum
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
@@ -265,7 +265,7 @@ function SqlInfoModal({
           shape="medium"
           style={{ padding: 14, marginBottom: 16 }}
         >
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface, fontWeight: '700' }]}>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
             newsletter_settings
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
@@ -330,7 +330,7 @@ function SqlInfoModal({
               {
                 backgroundColor: m3.surfaceContainerHighest,
                 borderRadius: m3Shape.medium,
-                borderColor: m3.outlineVariant,
+                
               },
             ]}
           >
@@ -488,7 +488,7 @@ export function SettingsScreen() {
             styles.sqlInput,
             {
               color: m3.onSurface,
-              borderColor: m3.outlineVariant,
+              
               backgroundColor: m3.surfaceContainerHighest,
             },
           ]}
@@ -501,7 +501,7 @@ export function SettingsScreen() {
               style={[
                 styles.infoBtn,
                 {
-                  borderColor: m3.outlineVariant,
+                  
                   backgroundColor: m3.surfaceContainerHigh,
                 },
               ]}
@@ -561,7 +561,7 @@ export function SettingsScreen() {
 
       <Text
         style={[
-          m3Type.labelLarge,
+          m3Type.labelLargeEmphasized,
           {
             color: m3.primary,
             marginBottom: 10,
@@ -631,7 +631,7 @@ export function SettingsScreen() {
 
       <Text
         style={[
-          m3Type.labelLarge,
+          m3Type.labelLargeEmphasized,
           {
             color: m3.error,
             marginBottom: 10,
@@ -797,19 +797,19 @@ const styles = StyleSheet.create({
     paddingBottom: 64,
   },
   sqlInput: {
-    borderWidth: 1,
+    backgroundColor: '#1E1E1E', // standard for code fields or surfaceContainerHighest
     borderRadius: m3Shape.medium,
     paddingHorizontal: 16,
     paddingVertical: 12,
     minHeight: 80,
     textAlignVertical: 'top',
     fontSize: 14,
+    color: '#FFF',
   },
   infoBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -817,7 +817,7 @@ const styles = StyleSheet.create({
   exampleCard: {
     padding: 14,
     marginBottom: 10,
-    borderWidth: 1,
+    borderRadius: m3Shape.medium,
   },
 });
 

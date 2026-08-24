@@ -9,12 +9,12 @@ export type Exercise =
   | 'Chins';
 
 export const EXERCISES: Exercise[] = [
-  'Squat',
-  'Bench Press',
   'Deadlift',
   'Clean & Press',
-  'Pullups',
+  'Squat',
   'Chins',
+  'Pullups',
+  'Bench Press',
 ];
 
 export type LiftRecord = {

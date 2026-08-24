@@ -12,7 +12,56 @@ import {
   Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import Svg, { Line, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
+import Svg, { Line, Polyline, Circle, Text as SvgText, G, Path } from 'react-native-svg';
+
+function NavChevronLeft({ color, size = 15 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 18l-6-6 6-6"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function NavChevronRight({ color, size = 15 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 18l6-6-6-6"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function NavResetIcon({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 12a9 9 0 1 0 2.64-6.36L2 9"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M2 4v5h5"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 import {
   Exercise,
   EXERCISES,
@@ -46,10 +95,11 @@ import {
   M3SegmentedButton,
   M3BottomSheet,
   M3TopAppBar,
+  M3FAB,
 } from '../themes/m3-components';
 
 export { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme };
-export { M3Card, M3Pressable, M3FilledButton, M3TonalButton, M3ErrorButton, M3SegmentedButton, M3BottomSheet, M3TopAppBar };
+export { M3Card, M3Pressable, M3FilledButton, M3TonalButton, M3ErrorButton, M3SegmentedButton, M3BottomSheet, M3TopAppBar, M3FAB };
 
 // ============================================================================
 // FORMATTING & CALENDAR TIME-SPLITTING HELPERS
@@ -85,12 +135,31 @@ function fmtWeight(w: number): string {
   return `${w}`;
 }
 
-function hoursToM3Color(hours: number, emptyColor: string, m3: M3Theme): string {
-  if (hours === 0) return emptyColor;
-  if (hours >= 24) return m3.fasting24plus;
-  if (hours >= 16) return m3.fasting16to24;
-  if (hours >= 12) return m3.fasting12to16;
-  return m3.fastingUnder12;
+// ---------- Fasting Zones (0-4h, 4-16h, 16-24h, 24-72h, 72h+) ----------
+
+interface FastingZone {
+  name: string;
+  minHours: number;
+  maxHours: number | null;
+  rangeLabel: string;
+}
+
+const FASTING_ZONES: FastingZone[] = [
+  { name: 'Anabolic', minHours: 0, maxHours: 4, rangeLabel: '0–4h' },
+  { name: 'Catabolic', minHours: 4, maxHours: 16, rangeLabel: '4–16h' },
+  { name: 'Fat Burning', minHours: 16, maxHours: 24, rangeLabel: '16–24h' },
+  { name: 'Ketosis', minHours: 24, maxHours: 72, rangeLabel: '24–72h' },
+  { name: 'Deep Ketosis', minHours: 72, maxHours: null, rangeLabel: '72h+' },
+];
+
+function getCurrentFastingZone(elapsedMs: number): FastingZone {
+  const elapsedHours = elapsedMs / 3600000;
+  return (
+    FASTING_ZONES.find((z) => {
+      if (z.maxHours === null) return elapsedHours >= z.minHours;
+      return elapsedHours >= z.minHours && elapsedHours < z.maxHours;
+    }) || FASTING_ZONES[0]
+  );
 }
 
 
@@ -774,24 +843,16 @@ export function WeightScreen() {
   const historyDesc = [...weights].reverse();
 
   return (
-    <ScrollView
-      style={{ backgroundColor: m3.surface }}
-      contentContainerStyle={styles.m3ScreenPad}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Title & Log Pill Button */}
+    <View style={{ flex: 1, backgroundColor: m3.surface }}>
+      <ScrollView
+        contentContainerStyle={styles.m3ScreenPad}
+        showsVerticalScrollIndicator={false}
+      >
+      {/* Title */}
       <View style={styles.m3TitleRow}>
         <View>
-          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Weight</Text>
+          <Text style={[m3Type.headlineLargeEmphasized, { color: m3.onSurface }]}>Weight</Text>
         </View>
-
-        <M3Pressable
-          onPress={() => setShowAdd(true)}
-          scaleTo={0.96}
-          style={[styles.m3ActionPill, { backgroundColor: m3.primary }]}
-        >
-          <Text style={[m3Type.labelMedium, { color: m3.onPrimary }]}>+ LOG</Text>
-        </M3Pressable>
       </View>
 
       {/* Main Chart Card */}
@@ -808,7 +869,7 @@ export function WeightScreen() {
 
         {/* Date Range Header with Prev/Next Controls */}
         <View style={styles.m3RangeHeader}>
-          <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>{window.label}</Text>
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>{window.label}</Text>
 
           <View style={{ flexDirection: 'row', gap: 6 }}>
             <M3Pressable
@@ -817,7 +878,7 @@ export function WeightScreen() {
               scaleTo={0.92}
               style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
             >
-              <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>‹</Text>
+              <NavChevronLeft color={m3.onSurface} />
             </M3Pressable>
             <M3Pressable
               onPress={() => setRangeOffset((o) => Math.min(0, o + 1))}
@@ -832,7 +893,7 @@ export function WeightScreen() {
                 },
               ]}
             >
-              <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>›</Text>
+              <NavChevronRight color={m3.onSurface} />
             </M3Pressable>
             {rangeOffset < 0 && (
               <M3Pressable
@@ -841,7 +902,7 @@ export function WeightScreen() {
                 scaleTo={0.92}
                 style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
               >
-                <Text style={{ color: m3.primary, fontSize: 14, fontWeight: '700' }}>↺</Text>
+                <NavResetIcon color={m3.primary} />
               </M3Pressable>
             )}
           </View>
@@ -850,12 +911,12 @@ export function WeightScreen() {
         {/* Hero Current Weight Display (DisplaySmall: 36sp) */}
         <View style={{ marginBottom: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-            <Text style={[m3Type.displaySmall, { color: m3.onSurface }]}>
+            <Text style={[m3Type.displaySmallEmphasized, { color: m3.onSurface }]}>
               {latestGlobalWeight ? latestGlobalWeight.weight.toFixed(1) : '--'}
             </Text>
             <Text style={[m3Type.titleMedium, { color: m3.onSurfaceVariant, marginLeft: 6 }]}>kg</Text>
           </View>
-          <Text style={[m3Type.bodySmall, { color: m3.tertiary, marginTop: 2, fontWeight: '500' }]}>{deltaText}</Text>
+          <Text style={[m3Type.bodySmallEmphasized, { color: m3.tertiary, marginTop: 2 }]}>{deltaText}</Text>
         </View>
 
 
@@ -868,7 +929,7 @@ export function WeightScreen() {
       </M3Card>
 
       {/* History Section */}
-      <Text style={[m3Type.titleLarge, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
+      <Text style={[m3Type.titleLargeEmphasized, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
         History
       </Text>
       {historyDesc.length === 0 ? (
@@ -879,7 +940,7 @@ export function WeightScreen() {
         historyDesc.map((w) => (
           <Pressable key={w.id} onPress={() => setEditing(w)}>
             <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
-              <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>{w.weight} kg</Text>
+              <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>{w.weight} kg</Text>
               <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>{w.date}</Text>
             </View>
           </Pressable>
@@ -898,6 +959,12 @@ export function WeightScreen() {
         onSaved={load}
       />
     </ScrollView>
+
+    <M3FAB 
+      label="+ LOG WEIGHT" 
+      onPress={() => setShowAdd(true)} 
+    />
+  </View>
   );
 }
 
@@ -1035,10 +1102,10 @@ export function StrengthScreen() {
     load();
   }, [load]);
 
-  // Auto-stack non-empty recorded cards at top, and empty unrecorded cards at bottom
-  const recordedExercises = EXERCISES.filter((ex) => !!maxLifts?.[ex]);
-  const unrecordedExercises = EXERCISES.filter((ex) => !maxLifts?.[ex]);
-  const sortedExercises = [...recordedExercises, ...unrecordedExercises];
+  // Canonical priority: Deadlift -> Clean & Press -> Squat -> Chins -> Pullups -> Bench Press
+  // Recorded exercises appear first in canonical order, followed by unrecorded exercises in canonical order
+  const recordedExercises = maxLifts ? EXERCISES.filter((ex) => !!maxLifts[ex]) : [];
+  const unrecordedExercises = maxLifts ? EXERCISES.filter((ex) => !maxLifts[ex]) : [];
 
   return (
     <ScrollView
@@ -1048,71 +1115,117 @@ export function StrengthScreen() {
     >
       <View style={styles.m3TitleRow}>
         <View>
-          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Strength</Text>
+          <Text style={[m3Type.headlineLargeEmphasized, { color: m3.onSurface }]}>Strength</Text>
         </View>
       </View>
 
-      {sortedExercises.map((ex) => {
-        const rec = maxLifts?.[ex];
-        const hasRecord = !!rec;
-
-        return (
-          <Pressable key={ex} onPress={() => setEditingExercise(ex)}>
-            {hasRecord ? (
-              /* Elevated Active Record Card */
+      {maxLifts && (
+        <>
+          {/* Recorded Exercises Grid (2-column layout) */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        {recordedExercises.map((ex) => {
+          const rec = maxLifts?.[ex];
+          if (!rec) return null;
+          return (
+            <Pressable
+              key={ex}
+              onPress={() => setEditingExercise(ex)}
+              style={{ width: '48%', marginBottom: 16 }}
+            >
               <M3Card
-                shape="large"
+                shape="extraLarge"
                 containerLevel="surfaceContainer"
-                style={{ marginBottom: 12, padding: 18 }}
+                style={{
+                  padding: 20,
+                  minHeight: 200,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
               >
-                <View style={styles.m3ExerciseHeaderRow}>
-                  <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
-                    {ex}
-                  </Text>
-                  <View style={[styles.m3TonalChip, { backgroundColor: m3.secondaryContainer }]}>
-                    <Text style={[m3Type.labelSmall, { color: m3.onSecondaryContainer }]}>
-                      EDIT
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={[m3Type.headlineMedium, { color: m3.pallasBlue, marginTop: 4, fontWeight: '600' }]}>
-                  {rec.weight === 0
-                    ? `Bodyweight × ${rec.reps}`
-                    : `${fmtWeight(rec.weight)} kg × ${rec.reps}`}
+                {/* Exercise Name */}
+                <Text
+                  style={[
+                    m3Type.labelMedium,
+                    {
+                      color: m3.onSurfaceVariant,
+                      textTransform: 'uppercase',
+                      letterSpacing: 1.5,
+                      textAlign: 'center',
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {ex}
                 </Text>
+
+                {/* Hero Lift Value */}
+                <View style={{ marginVertical: 16, alignItems: 'center', justifyContent: 'center' }}>
+                  {ex === 'Chins' || ex === 'Pullups' ? (
+                    <Text style={[m3Type.headlineMediumEmphasized, { color: m3.pallasBlue, textAlign: 'center' }]}>
+                      {rec.weight === 0
+                        ? `BW × ${rec.reps}`
+                        : `${fmtWeight(rec.weight)} kg × ${rec.reps}`}
+                    </Text>
+                  ) : rec.weight === 0 ? (
+                    <Text style={[m3Type.headlineMediumEmphasized, { color: m3.pallasBlue, textAlign: 'center' }]}>
+                      BW × {rec.reps}
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={[m3Type.displayMedium, { color: m3.pallasBlue, textAlign: 'center', lineHeight: 52 }]}>
+                        {fmtWeight(rec.weight)}
+                      </Text>
+                      <Text style={[m3Type.titleMedium, { color: m3.onSurface, textAlign: 'center', marginTop: 2 }]}>
+                        kg × {rec.reps}
+                      </Text>
+                    </>
+                  )}
+                </View>
+
+                {/* Edit Chip */}
+                <View style={[styles.m3TonalChip, { backgroundColor: m3.surfaceContainerHighest, borderRadius: m3Shape.full, paddingHorizontal: 12 }]}>
+                  <Text style={[m3Type.labelSmallEmphasized, { color: m3.onSurfaceVariant }]}>
+                    EDIT
+                  </Text>
+                </View>
               </M3Card>
+            </Pressable>
+          );
+        })}
+      </View>
 
-            ) : (
-              /* Compact Subtle Unrecorded Row */
-              <View
-                style={[
-                  styles.m3EmptyExerciseRow,
-                  {
-                    backgroundColor: m3.surfaceContainerLowest,
-                    borderColor: m3.outlineVariant,
-                  },
-                ]}
-              >
-                <View>
-                  <Text style={[m3Type.titleSmall, { color: m3.onSurface }]}>
-                    {ex}
-                  </Text>
-                  <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
-                    No record set
-                  </Text>
-                </View>
-
-                <View style={[styles.m3TonalChip, { backgroundColor: m3.surfaceContainerHighest }]}>
-                  <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>
-                    + LOG
-                  </Text>
-                </View>
+      {/* Unrecorded Exercises (Compact List) */}
+      <View style={{ marginTop: 8 }}>
+        {unrecordedExercises.map((ex) => (
+          <Pressable key={ex} onPress={() => setEditingExercise(ex)}>
+            <View
+              style={[
+                styles.m3EmptyExerciseRow,
+                {
+                  backgroundColor: m3.surfaceContainer,
+                },
+              ]}
+            >
+              <View>
+                <Text style={[m3Type.titleSmallEmphasized, { color: m3.onSurface }]}>
+                  {ex}
+                </Text>
+                <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+                  No record set
+                </Text>
               </View>
-            )}
+
+              <View style={[styles.m3TonalChip, { backgroundColor: m3.surfaceContainerHighest }]}>
+                <Text style={[m3Type.labelSmallEmphasized, { color: m3.onSurfaceVariant }]}>
+                  + LOG
+                </Text>
+              </View>
+            </View>
           </Pressable>
-        );
-      })}
+        ))}
+      </View>
+        </>
+      )}
 
       <EditLiftModal
         visible={!!editingExercise}
@@ -1170,7 +1283,7 @@ function FastCalendar({
       <View style={styles.m3CalendarHeader}>
         <View>
           <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>Daily Average</Text>
-          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>{avgText}</Text>
+          <Text style={[m3Type.headlineLargeEmphasized, { color: m3.onSurface }]}>{avgText}</Text>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1180,9 +1293,9 @@ function FastCalendar({
             scaleTo={0.92}
             style={[styles.m3IconNavBtn, { backgroundColor: m3.surfaceContainerHighest }]}
           >
-            <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>‹</Text>
+            <NavChevronLeft color={m3.onSurface} />
           </M3Pressable>
-          <Text style={[m3Type.titleSmall, { color: m3.onSurface, marginHorizontal: 4 }]}>
+          <Text style={[m3Type.titleSmallEmphasized, { color: m3.onSurface, marginHorizontal: 4 }]}>
             {dateRangeLabel}
           </Text>
           <M3Pressable
@@ -1198,7 +1311,7 @@ function FastCalendar({
               },
             ]}
           >
-            <Text style={{ color: m3.onSurface, fontSize: 18, fontWeight: '700' }}>›</Text>
+            <NavChevronRight color={m3.onSurface} />
           </M3Pressable>
         </View>
       </View>
@@ -1236,7 +1349,6 @@ function FastCalendar({
               d.hours > 0
                 ? Math.min(BAR_AREA_HEIGHT, Math.max(8, (d.hours / maxY) * BAR_AREA_HEIGHT))
                 : 0;
-            const barColor = hoursToM3Color(d.hours, m3.surfaceContainerHighest, m3);
             const dateStr = `${d.date.getMonth() + 1}/${d.date.getDate()}`;
 
             return (
@@ -1289,7 +1401,7 @@ function FastCalendar({
                         width: 14,
                         height: barHeight,
                         borderRadius: 7,
-                        backgroundColor: barColor,
+                        backgroundColor: m3.primary,
                       }}
                     />
                   )}
@@ -1309,26 +1421,6 @@ function FastCalendar({
               </Pressable>
             );
           })}
-        </View>
-      </View>
-
-      {/* Legend */}
-      <View style={styles.m3LegendRow}>
-        <View style={styles.m3LegendItem}>
-          <View style={[styles.m3LegendDot, { backgroundColor: m3.fastingUnder12 }]} />
-          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>&lt;12h</Text>
-        </View>
-        <View style={styles.m3LegendItem}>
-          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting12to16 }]} />
-          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>12–16h</Text>
-        </View>
-        <View style={styles.m3LegendItem}>
-          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting16to24 }]} />
-          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>16–24h</Text>
-        </View>
-        <View style={styles.m3LegendItem}>
-          <View style={[styles.m3LegendDot, { backgroundColor: m3.fasting24plus }]} />
-          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>24h+</Text>
         </View>
       </View>
     </M3Card>
@@ -1534,6 +1626,7 @@ function EditFastModal({
 
 export function FastingScreen() {
   const m3 = useM3Theme();
+
   const [activeFast, setActiveFastState] = useState<Fast | null>(null);
   const [history, setHistory] = useState<Fast[]>([]);
   const [now, setNow] = useState(Date.now());
@@ -1560,45 +1653,59 @@ export function FastingScreen() {
   const elapsed = activeFast ? now - new Date(activeFast.start_time).getTime() : 0;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: m3.surface }}
-      contentContainerStyle={styles.m3ScreenPad}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={{ flex: 1, backgroundColor: m3.surface }}>
+      <ScrollView
+        contentContainerStyle={styles.m3ScreenPad}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.m3TitleRow}>
         <View>
-          <Text style={[m3Type.headlineLarge, { color: m3.onSurface }]}>Fasting</Text>
+          <Text style={[m3Type.headlineLargeEmphasized, { color: m3.onSurface }]}>Fasting</Text>
         </View>
       </View>
 
       {/* Hero Active / Inactive Fast Card */}
       <M3Card shape="extraLarge" style={{ marginBottom: 20 }}>
         {activeFast ? (
-          <View style={{ alignItems: 'center' }}>
-            <View style={[styles.m3StatusBadge, { backgroundColor: m3.primaryContainer }]}>
-              <Text style={[m3Type.labelSmall, { color: m3.onPrimaryContainer }]}>
-                ● ACTIVE FAST
-              </Text>
-            </View>
+          (() => {
+            const zone = getCurrentFastingZone(elapsed);
+            return (
+              <View style={{ alignItems: 'center' }}>
+                <View style={[styles.m3StatusBadge, { backgroundColor: m3.primaryContainer }]}>
+                  <Text style={[m3Type.labelSmallEmphasized, { color: m3.onPrimaryContainer }]}>
+                    ● ACTIVE FAST
+                  </Text>
+                </View>
 
-            <Text style={[styles.m3TimerText, { color: m3.onSurface }]}>
-              {formatHMS(elapsed)}
-            </Text>
+                <Text style={[styles.m3TimerText, { color: m3.onSurface }]}>
+                  {formatHMS(elapsed)}
+                </Text>
 
-            <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginBottom: 20 }]}>
-              Started {formatTime(activeFast.start_time)}
-            </Text>
+                <Text
+                  style={[
+                    m3Type.titleMediumEmphasized,
+                    {
+                      color: m3.onSurfaceVariant,
+                      marginTop: 4,
+                      marginBottom: 20,
+                    },
+                  ]}
+                >
+                  {zone.name} {zone.rangeLabel}
+                </Text>
 
-            <M3FilledButton
-              label="End Fast"
-              onPress={() => setShowEndFast(true)}
-              style={{ width: '100%' }}
-            />
-          </View>
+                <M3FilledButton
+                  label="End Fast"
+                  onPress={() => setShowEndFast(true)}
+                  style={{ width: '100%' }}
+                />
+              </View>
+            );
+          })()
         ) : (
           <View style={{ alignItems: 'center' }}>
             <View style={[styles.m3StatusBadge, { backgroundColor: m3.surfaceContainerHighest }]}>
-              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>
+              <Text style={[m3Type.labelSmallEmphasized, { color: m3.onSurfaceVariant }]}>
                 NOT FASTING
               </Text>
             </View>
@@ -1621,7 +1728,7 @@ export function FastingScreen() {
 
       <FastCalendar fasts={history} onSelectFast={setEditing} />
 
-      <Text style={[m3Type.titleLarge, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
+      <Text style={[m3Type.titleLargeEmphasized, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
         History
       </Text>
       {history.length === 0 ? (
@@ -1632,7 +1739,7 @@ export function FastingScreen() {
         history.map((f) => (
           <Pressable key={f.id} onPress={() => setEditing(f)}>
             <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
-              <Text style={[m3Type.titleMedium, { color: m3.onSurface }]}>
+              <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
                 {f.end_time
                   ? formatHM(new Date(f.end_time).getTime() - new Date(f.start_time).getTime())
                   : ''}
@@ -1670,6 +1777,7 @@ export function FastingScreen() {
         onSaved={load}
       />
     </ScrollView>
+  </View>
   );
 }
 
@@ -1681,7 +1789,7 @@ const styles = StyleSheet.create({
   m3ScreenPad: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 48,
+    paddingBottom: 100, // Enough to scroll past the FAB
   },
   m3TitleRow: {
     flexDirection: 'row',
@@ -1732,7 +1840,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: m3Shape.large,
-    borderWidth: 1,
     marginBottom: 10,
   },
   m3TonalChip: {
@@ -1758,22 +1865,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 18,
-  },
-  m3LegendRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginTop: 10,
-  },
-  m3LegendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  m3LegendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
   },
   m3ModalWrap: {
     flex: 1,
