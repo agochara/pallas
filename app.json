@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pallas",
     "slug": "logfit",
-    "version": "2.3.0",
+    "version": "2.3.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {
@@ -16,14 +16,7 @@
     "plugins": [
       "expo-asset",
       "@react-native-community/datetimepicker",
-      "expo-font",
-      "expo-build-properties",
-      "expo-build-properties",
-        {
-          "android": {
-            "enablePngCrunchInReleaseBuilds": false
-          }
-        }
+      "expo-font"
     ],
     "extra": {
       "eas": {
