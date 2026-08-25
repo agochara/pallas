@@ -1,10 +1,11 @@
 {
   "name": "pallas",
-  "version": "2.4.0",
+  "version": "2.4.2",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android"
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo-google-fonts/eb-garamond": "^0.4.3",

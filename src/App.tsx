@@ -448,7 +448,14 @@ function AppRoot() {
   useEffect(() => {
     initDatabase().then(() => {
       setReady(true);
-      import('./coach/backgroundTask').then((m) => m.registerCoachBackgroundTask());
+      import('./coach/backgroundTask').then(async (m) => {
+        m.registerCoachBackgroundTask();
+        const { getCoachSteps } = await import('./database/db');
+        const steps = await getCoachSteps();
+        if (steps.length === 0) {
+          m.executeCoachSync();
+        }
+      });
     });
   }, []);
 

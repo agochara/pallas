@@ -845,7 +845,7 @@ export function WeightScreen() {
     { key: 'Y', label: 'Y' },
   ];
 
-  const historyDesc = [...weights].reverse();
+
 
   return (
     <View style={{ flex: 1, backgroundColor: m3.surface }}>
@@ -933,24 +933,6 @@ export function WeightScreen() {
         />
       </M3Card>
 
-      {/* History Section */}
-      <Text style={[m3Type.titleLargeEmphasized, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
-        History
-      </Text>
-      {historyDesc.length === 0 ? (
-        <View style={styles.m3EmptyWrap}>
-          <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>No weight entries recorded yet</Text>
-        </View>
-      ) : (
-        historyDesc.map((w) => (
-          <Pressable key={w.id} onPress={() => setEditing(w)}>
-            <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
-              <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>{w.weight} kg</Text>
-              <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>{w.date}</Text>
-            </View>
-          </Pressable>
-        ))
-      )}
 
       <AddWeightModal
         visible={showAdd}
@@ -1736,12 +1718,20 @@ export function FastingScreen() {
       <Text style={[m3Type.titleLargeEmphasized, { color: m3.onSurface, marginBottom: 12, marginTop: 8 }]}>
         History
       </Text>
-      {history.length === 0 ? (
-        <View style={styles.m3EmptyWrap}>
-          <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>No fasts recorded yet</Text>
-        </View>
-      ) : (
-        history.map((f) => (
+      {(() => {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const recentHistory = history.filter(f => new Date(f.start_time).getTime() >= sevenDaysAgo.getTime());
+
+        if (recentHistory.length === 0) {
+          return (
+            <View style={styles.m3EmptyWrap}>
+              <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>No fasts recorded in the past 7 days</Text>
+            </View>
+          );
+        }
+
+        return recentHistory.map((f) => (
           <Pressable key={f.id} onPress={() => setEditing(f)}>
             <View style={[styles.m3ListRow, { backgroundColor: m3.surfaceContainerLow }]}>
               <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
@@ -1754,8 +1744,8 @@ export function FastingScreen() {
               </Text>
             </View>
           </Pressable>
-        ))
-      )}
+        ));
+      })()}
 
       <StartFastModal
         visible={showStartFast}

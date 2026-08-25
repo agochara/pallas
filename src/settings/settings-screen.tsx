@@ -307,6 +307,81 @@ function SqlInfoModal({
           </View>
         </M3Card>
 
+        {/* Table 6: coach_config */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+            coach_config
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Stores Coach threshold settings.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • id INTEGER PRIMARY KEY (1)
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • steps_threshold INTEGER (e.g. 7000)
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • steps_days INTEGER (e.g. 3)
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • fasting_days INTEGER (e.g. 3)
+            </Text>
+          </View>
+        </M3Card>
+
+        {/* Table 7: coach_steps */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 10 }}
+        >
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+            coach_steps
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Rolling 15-day window of daily aggregated steps from Health Connect.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • date TEXT PRIMARY KEY (YYYY-MM-DD)
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • steps INTEGER
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • updated_at TEXT (ISO 8601 string)
+            </Text>
+          </View>
+        </M3Card>
+
+        {/* Table 8: coach_events */}
+        <M3Card
+          containerLevel="surfaceContainerHighest"
+          shape="medium"
+          style={{ padding: 14, marginBottom: 16 }}
+        >
+          <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+            coach_events
+          </Text>
+          <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+            Active unresolved Coach interventions.
+          </Text>
+          <View style={{ marginTop: 6 }}>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • type TEXT PRIMARY KEY ('insufficient_steps', 'missed_fast')
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • triggered_at TEXT (ISO 8601 string)
+            </Text>
+          </View>
+        </M3Card>
+
         {/* Example Queries */}
         <Text
           style={[

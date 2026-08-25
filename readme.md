@@ -96,6 +96,7 @@ Coach is an ephemeral chat-like interface combining passive rule-based intervent
   * `/convert <val> <kg|lbs>` — Convert between kilograms and pounds (e.g. `/convert 70kg`, `/convert 150 lbs`).
   * `/search <pattern>` — Case-insensitive regex or substring search through bundled aphorisms (`myQuotes`).
   * `/hc` — Request Android Health Connect permissions.
+  * `/synchc` — Manually trigger background sync of steps and fasting rules.
   * `/help` — Display command reference and usage examples.
 
 ## Data & Persistence
@@ -112,7 +113,7 @@ The database contains:
 * `vade_mecum` — continuous personal notepad content.
 * `newsletter_settings` — The Study's persistent state and settings.
 * `coach_config` — Coach threshold settings (`steps_threshold`, `steps_days`, `fasting_days`).
-* `coach_steps` — rolling 14-day window of daily aggregated steps from Health Connect.
+* `coach_steps` — rolling 15-day window of daily aggregated steps from Health Connect.
 * `coach_events` — active unresolved Coach interventions.
 
 The database uses SQLite WAL mode.

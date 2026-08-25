@@ -26,6 +26,8 @@ export async function executeCoachCommand(input: string): Promise<CommandResult>
           '• /convert <val> <kg|lbs> — Convert between kg and lbs (e.g. /convert 70kg, /convert 150lbs)',
           '• /search <pattern> — Search quote collection (substring or regex)',
           '• /hc — Request Health Connect step permissions',
+          '• /steps — View today\'s steps directly from Health Connect',
+          '• /synchc — Manually trigger background sync of steps and fasting rules',
           '• /help — Show this help menu',
         ].join('\n')
       };
@@ -122,10 +124,54 @@ export async function executeCoachCommand(input: string): Promise<CommandResult>
     case '/hc': {
       try {
         const hc = await import('react-native-health-connect');
+        const isInitialized = await hc.initialize();
+        if (!isInitialized) {
+          return { text: 'Health Connect could not be initialized.' };
+        }
         await hc.requestPermission([{ accessType: 'read', recordType: 'Steps' }]);
         return { text: 'Health Connect read permissions requested. (Note: Please also enable Background Read manually in Android Health Connect settings if you want passive coaching).' };
       } catch (err: any) {
         return { text: 'Health Connect error: ' + (err?.message || String(err)) };
+      }
+    }
+
+    case '/steps': {
+      try {
+        const hc = await import('react-native-health-connect');
+        const isInitialized = await hc.initialize();
+        if (!isInitialized) {
+          return { text: 'Health Connect could not be initialized.' };
+        }
+        const granted = await hc.getGrantedPermissions();
+        if (!granted.some(p => p.recordType === 'Steps' && p.accessType === 'read')) {
+          return { text: 'Steps read permission not granted. Run /hc to request permission.' };
+        }
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const stepsData = await hc.aggregateRecord({
+          recordType: 'Steps',
+          timeRangeFilter: {
+            operator: 'between',
+            startTime: today.toISOString(),
+            endTime: tomorrow.toISOString(),
+          }
+        });
+        const count = Number(stepsData?.COUNT_TOTAL) || 0;
+        return { text: `You have taken ${count} steps today (live from Health Connect).` };
+      } catch (err: any) {
+        return { text: 'Health Connect error: ' + (err?.message || String(err)) };
+      }
+    }
+
+    case '/synchc': {
+      try {
+        const { executeCoachSync } = await import('./backgroundTask');
+        const success = await executeCoachSync();
+        return { text: success ? 'Health Connect manual sync complete.' : 'Manual sync failed.' };
+      } catch (err: any) {
+        return { text: 'Sync error: ' + (err?.message || String(err)) };
       }
     }
 

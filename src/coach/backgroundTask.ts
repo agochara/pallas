@@ -19,7 +19,7 @@ const toLocalIso = (d: Date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
+export async function executeCoachSync() {
   try {
     // 1. FASTING RULE (Independent)
     try {
@@ -75,27 +75,32 @@ TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
           // Initialization succeeded, but user genuinely has not granted/revoked permission.
           await resolveCoachEvent('insufficient_steps');
         } else {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const tomorrow = new Date(today);
-          tomorrow.setDate(tomorrow.getDate() + 1);
+          // Sync today and the past 14 days
+          for (let i = 0; i <= 14; i++) {
+            const dateStr = new Date();
+            dateStr.setDate(dateStr.getDate() - i);
+            dateStr.setHours(0, 0, 0, 0);
+            
+            const nextDay = new Date(dateStr);
+            nextDay.setDate(nextDay.getDate() + 1);
 
-          const stepsData = await aggregateRecord({
-            recordType: 'Steps',
-            timeRangeFilter: {
-              operator: 'between',
-              startTime: today.toISOString(),
-              endTime: tomorrow.toISOString(),
+            const stepsData = await aggregateRecord({
+              recordType: 'Steps',
+              timeRangeFilter: {
+                operator: 'between',
+                startTime: dateStr.toISOString(),
+                endTime: nextDay.toISOString(),
+              }
+            });
+            
+            let totalSteps = Number(stepsData?.COUNT_TOTAL);
+            if (!Number.isFinite(totalSteps) || totalSteps < 0) {
+              totalSteps = 0;
             }
-          });
-          
-          let totalSteps = Number(stepsData?.COUNT_TOTAL);
-          if (!Number.isFinite(totalSteps) || totalSteps < 0) {
-            totalSteps = 0;
-          }
 
-          const todayStr = toLocalIso(today);
-          await updateCoachSteps(todayStr, totalSteps);
+            const localIsoStr = toLocalIso(dateStr);
+            await updateCoachSteps(localIsoStr, totalSteps);
+          }
 
           // Fetch config for steps separately to ensure rule independence
           const config = await getCoachConfig();
@@ -108,16 +113,26 @@ TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
           const completedHistory = history.filter(s => s.date < todayStrForRule);
           
           let anyDaySufficient = false;
-          for (let i = 1; i <= stepDays; i++) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dStr = toLocalIso(d);
-            
-            const record = completedHistory.find(s => s.date === dStr);
-            const steps = record ? record.steps : 0;
-            if (steps >= stepThreshold) {
-              anyDaySufficient = true;
-              break;
+          
+          // First check if today has already met the requirement
+          const todayRecord = history.find(s => s.date === todayStrForRule);
+          if (todayRecord && todayRecord.steps >= stepThreshold) {
+            anyDaySufficient = true;
+          }
+
+          if (!anyDaySufficient) {
+            // Check the past stepDays
+            for (let i = 1; i <= stepDays; i++) {
+              const d = new Date();
+              d.setDate(d.getDate() - i);
+              const dStr = toLocalIso(d);
+              
+              const record = completedHistory.find(s => s.date === dStr);
+              const steps = record ? record.steps : 0;
+              if (steps >= stepThreshold) {
+                anyDaySufficient = true;
+                break;
+              }
             }
           }
           
@@ -132,18 +147,23 @@ TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
       console.error('Steps rule error:', err);
     }
 
-    return BackgroundTask.BackgroundTaskResult.Success;
+    return true;
   } catch (error) {
     console.error('Coach background task critical failure:', error);
-    return BackgroundTask.BackgroundTaskResult.Failed;
+    return false;
   }
+}
+
+TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
+  const success = await executeCoachSync();
+  return success ? BackgroundTask.BackgroundTaskResult.Success : BackgroundTask.BackgroundTaskResult.Failed;
 });
 
 export async function registerCoachBackgroundTask() {
   const isRegistered = await TaskManager.isTaskRegisteredAsync(COACH_BACKGROUND_TASK);
   if (!isRegistered) {
     await BackgroundTask.registerTaskAsync(COACH_BACKGROUND_TASK, {
-      minimumInterval: 60, // explicitly in minutes per expo-background-task definitions
+      minimumInterval: 180, // explicitly in minutes per expo-background-task definitions
     });
   }
 }
