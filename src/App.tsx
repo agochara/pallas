@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  AppState,
   Platform,
   StatusBar as RNStatusBar,
 } from 'react-native';
@@ -29,6 +30,7 @@ import {
   FastingScreen,
   StrengthScreen,
   WeightScreen,
+  CoachScreen,
 } from './askesis/screens';
 import { SettingsScreen } from './settings/settings-screen';
 import { StudyScreen } from './the-study/study';
@@ -42,7 +44,7 @@ import {
   EBGaramond_400Regular_Italic,
 } from '@expo-google-fonts/eb-garamond';
 
-type AskesisTab = 'fasting' | 'strength' | 'weight';
+type AskesisTab = 'fasting' | 'strength' | 'weight' | 'coach';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -62,6 +64,7 @@ const ASKESIS_TABS: { key: AskesisTab; label: string }[] = [
   { key: 'fasting', label: 'Fasting' },
   { key: 'strength', label: 'Strength' },
   { key: 'weight', label: 'Weight' },
+  { key: 'coach', label: 'Coach' },
 ];
 
 function FastingTabIcon({ color }: { color: string }) {
@@ -184,9 +187,11 @@ function M3LauncherCard({
 function M3NavigationBar({
   currentTab,
   onSelectTab,
+  hasEvents = false,
 }: {
   currentTab: AskesisTab;
   onSelectTab: (tab: AskesisTab) => void;
+  hasEvents?: boolean;
 }) {
   const m3 = useM3Theme();
 
@@ -210,7 +215,6 @@ function M3NavigationBar({
             scaleTo={0.94}
             onPress={() => onSelectTab(t.key)}
           >
-            {/* Deterministic Shared Indicator */}
             <View
               style={[
                 styles.m3NavPill,
@@ -222,6 +226,24 @@ function M3NavigationBar({
               {t.key === 'fasting' && <FastingTabIcon color={iconColor} />}
               {t.key === 'strength' && <StrengthTabIcon color={iconColor} />}
               {t.key === 'weight' && <WeightTabIcon color={iconColor} />}
+              {t.key === 'coach' && (
+                <>
+                  <CoachTabIcon color={iconColor} />
+                  {hasEvents && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        right: 18,
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: m3.error,
+                      }}
+                    />
+                  )}
+                </>
+              )}
             </View>
             <Text
               style={[
@@ -377,6 +399,24 @@ function SettingsScreenWrapper({ navigation }: any) {
 function AskesisScreenWrapper({ navigation }: any) {
   const m3 = useM3Theme();
   const [askesisTab, setAskesisTab] = useState<AskesisTab>('fasting');
+  const [hasEvents, setHasEvents] = useState(false);
+
+  useEffect(() => {
+    const checkEvents = () => {
+      import('./database/db').then((db) => {
+        db.getCoachEvents().then((events) => {
+          setHasEvents(events.length > 0);
+        });
+      });
+    };
+    checkEvents();
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkEvents();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: m3.surface }]}>
@@ -386,8 +426,9 @@ function AskesisScreenWrapper({ navigation }: any) {
         {askesisTab === 'fasting' && <FastingScreen />}
         {askesisTab === 'strength' && <StrengthScreen />}
         {askesisTab === 'weight' && <WeightScreen />}
+        {askesisTab === 'coach' && <CoachScreen />}
       </View>
-      <M3NavigationBar currentTab={askesisTab} onSelectTab={setAskesisTab} />
+      <M3NavigationBar currentTab={askesisTab} onSelectTab={setAskesisTab} hasEvents={hasEvents} />
     </View>
   );
 }
@@ -405,7 +446,10 @@ function AppRoot() {
   });
 
   useEffect(() => {
-    initDatabase().then(() => setReady(true));
+    initDatabase().then(() => {
+      setReady(true);
+      import('./coach/backgroundTask').then((m) => m.registerCoachBackgroundTask());
+    });
   }, []);
 
   if (!ready || !fontsLoaded) {
@@ -517,3 +561,64 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 });
+// Placeholder for CoachTabIcon
+export function CoachTabIcon({ color }: { color: string }) {
+  return (
+<Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+  {/* Helmet + head silhouette */}
+  <Path
+    d="
+      M6.1 10.1
+      C5.8 7.2 6.8 4.9 8.9 3.5
+      C10.2 2.6 11.9 2.2 13.5 2.5
+      C15.1 2.8 16.4 3.7 17.1 5
+      C17.7 6.1 17.8 7.4 17.5 8.5
+
+      C17.2 8.8 17 9.1 17.1 9.4
+      L18.3 10.1
+      L17.1 10.8
+      L17.4 11.6
+      L16.5 12.1
+      C16.2 13.4 15.5 14.4 14.4 15.1
+      C13.7 15.6 12.9 15.8 12.1 15.7
+
+      L11.9 17.2
+      L8.9 17.8
+      L7.3 16.2
+      C6.7 14.8 6.2 13.2 6.1 10.1
+      Z
+    "
+    fill={color}
+  />
+
+  {/* Helmet crest */}
+  <Path
+    d="
+      M7.3 5.1
+      C7.8 3.2 9.1 1.7 10.9 1
+      C11.8 0.7 12.8 0.8 13.7 1.2
+      C12.5 1.8 11.5 2.7 10.8 3.8
+      C9.6 4 8.4 4.5 7.3 5.1
+      Z
+    "
+    fill={color}
+  />
+
+  {/* Shoulder / bust */}
+  <Path
+    d="
+      M8.9 16.5
+      C7.1 17 5.3 18 4.1 19.5
+      C3.4 20.4 3 21.2 2.8 22
+      H21.2
+      C21 21.2 20.6 20.4 19.9 19.5
+      C18.7 18 16.9 17 14.9 16.5
+      C13.8 17.3 12.5 17.7 11.9 17.7
+      C10.9 17.7 9.8 17.3 8.9 16.5
+      Z
+    "
+    fill={color}
+  />
+</Svg>
+  );
+}

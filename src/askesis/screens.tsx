@@ -9,6 +9,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  AppState,
   Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -499,7 +500,7 @@ function getTimeWindow(range: TimeRange, offset: number): TimeWindow {
 function WeightTimeSeriesChart({
   entries,
   window,
-  onSelectEntry,
+  onSelectEntry, // kept for props signature compatibility if used elsewhere, though not used in graph clicks
 }: {
   entries: WeightEntry[];
   window: TimeWindow;
@@ -538,10 +539,24 @@ function WeightTimeSeriesChart({
     const xPct = Math.max(0, Math.min(1, (t - window.startMs) / timeSpan));
     const x = padLeft + xPct * drawWidth;
     const y = padTop + ((maxW - e.weight) / yRange) * drawHeight;
-    return { x, y, entry: e };
+    return { x, y, entry: e, t };
   });
 
-  const polylinePoints = mappedPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  // Calculate EMA Trendline
+  let trendPointsArr = [];
+  if (mappedPoints.length > 0) {
+    let ema = mappedPoints[0].entry.weight;
+    // We can use a time-weighted alpha if we wanted, but a simple alpha over sorted points 
+    // gives a pleasant Google Fit style smooth curve.
+    const alpha = 0.2; 
+    for (let i = 0; i < mappedPoints.length; i++) {
+      const pt = mappedPoints[i];
+      ema = (pt.entry.weight * alpha) + (ema * (1 - alpha));
+      const trendY = padTop + ((maxW - ema) / yRange) * drawHeight;
+      trendPointsArr.push(`${pt.x.toFixed(1)},${trendY.toFixed(1)}`);
+    }
+  }
+  const trendPolyline = trendPointsArr.join(' ');
 
   const midW = Math.round((minW + maxW) / 2);
   const yTicks = [
@@ -583,40 +598,30 @@ function WeightTimeSeriesChart({
           </G>
         ))}
 
+        {/* Trendline (Prominent smooth line) */}
         {mappedPoints.length >= 2 && (
           <Polyline
-            points={polylinePoints}
+            points={trendPolyline}
             fill="none"
-            stroke={m3.tertiary}
-            strokeWidth="3"
+            stroke={m3.primary}
+            strokeWidth="3.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         )}
 
+        {/* Raw Measurements (Small translucent dots) */}
         {mappedPoints.map((p, i) => (
-          <G key={i}>
-            {/* Expanded 48x48dp touch target */}
-            <Circle
-              cx={p.x}
-              cy={p.y}
-              r={24}
-              fill="transparent"
-              onPress={() => onSelectEntry(p.entry)}
-            />
-            {/* Visual point */}
-            <Circle
-              cx={p.x}
-              cy={p.y}
-              r={mappedPoints.length > 30 ? 3.5 : 5.5}
-              fill={m3.surfaceContainer}
-              stroke={m3.tertiary}
-              strokeWidth="2.5"
-              pointerEvents="none"
-            />
-          </G>
+          <Circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={3}
+            fill={m3.primary}
+            opacity={0.4}
+            pointerEvents="none"
+          />
         ))}
-
 
         {window.ticks.map((tick, i) => {
           const xPct = Math.max(0, Math.min(1, (tick.timeMs - window.startMs) / timeSpan));
@@ -1916,3 +1921,263 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+// ============================================================================
+// COACH SCREEN
+// ============================================================================
+
+import { getCoachEvents, CoachEvent } from '../database/db';
+import { executeCoachCommand } from '../coach/commands';
+
+type ChatMessage = {
+  id: string;
+  type: 'event' | 'command' | 'response';
+  text: string;
+  createdAt: number;
+  ui?: 'bmi' | 'search';
+  payload?: any;
+};
+
+// --- Custom Chat Widgets ---
+function BMIWidget({ payload }: { payload: any }) {
+  const m3 = useM3Theme();
+  const { bmi, height } = payload;
+  
+  const MIN_BMI = 12;
+  const MAX_BMI = 42;
+  const range = MAX_BMI - MIN_BMI;
+  
+  const clampedBmi = Math.max(MIN_BMI, Math.min(MAX_BMI, bmi));
+  const pointerPct = ((clampedBmi - MIN_BMI) / range) * 100;
+
+  const hM = height / 100;
+  const hSq = hM * hM;
+  const w18_5 = (18.5 * hSq).toFixed(0) + 'kg';
+  const w25 = (25 * hSq).toFixed(0) + 'kg';
+  const w30 = (30 * hSq).toFixed(0) + 'kg';
+  
+  return (
+    <View style={{ marginTop: 16, marginBottom: 8, width: 260, maxWidth: '100%', alignSelf: 'center' }}>
+      <View style={{ flexDirection: 'row', height: 16, borderRadius: 8, overflow: 'hidden' }}>
+        <View style={{ flex: 6.5, backgroundColor: '#4FC3F7' }} />
+        <View style={{ flex: 6.5, backgroundColor: '#81C784' }} />
+        <View style={{ flex: 5, backgroundColor: '#FFD54F' }} />
+        <View style={{ flex: 12, backgroundColor: '#E57373' }} />
+      </View>
+      
+      <View style={{
+         position: 'absolute',
+         top: -8, bottom: 0, left: 0, right: 0,
+      }}>
+         <View style={{
+            position: 'absolute',
+            left: `${pointerPct}%`,
+            marginLeft: -8,
+            width: 16,
+            alignItems: 'center'
+         }}>
+           <View style={{
+             width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid',
+             borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 10,
+             borderLeftColor: 'transparent', borderRightColor: 'transparent',
+             borderTopColor: m3.onSurface,
+           }} />
+           <View style={{ width: 4, height: 16, backgroundColor: m3.onSurface, marginTop: -2, borderRadius: 2 }} />
+         </View>
+      </View>
+      
+      <View style={{ flexDirection: 'row', marginTop: 4 }}>
+        <View style={{ flex: 6.5, alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 10, color: m3.onSurfaceVariant, marginRight: -12, width: 30, textAlign: 'center' }}>{w18_5}</Text>
+        </View>
+        <View style={{ flex: 6.5, alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 10, color: m3.onSurfaceVariant, marginRight: -12, width: 30, textAlign: 'center' }}>{w25}</Text>
+        </View>
+        <View style={{ flex: 5, alignItems: 'flex-end' }}>
+          <Text style={{ fontSize: 10, color: m3.onSurfaceVariant, marginRight: -12, width: 30, textAlign: 'center' }}>{w30}</Text>
+        </View>
+        <View style={{ flex: 12 }} />
+      </View>
+    </View>
+  );
+}
+
+function SearchWidget({ payload }: { payload: any }) {
+  const m3 = useM3Theme();
+  const { matches } = payload;
+  const [page, setPage] = useState(0);
+  
+  const perPage = 3;
+  const totalPages = Math.ceil(matches.length / perPage);
+  const start = page * perPage;
+  const currentMatches = matches.slice(start, start + perPage);
+
+  if (!matches || matches.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 12, width: '100%' }}>
+      {currentMatches.map((match: string, i: number) => (
+        <View key={i} style={{ marginBottom: 8, backgroundColor: m3.surface, padding: 12, borderRadius: 12 }}>
+          <Text style={[m3Type.bodyMedium, { color: m3.onSurface }]}>"{match}"</Text>
+        </View>
+      ))}
+      
+      {totalPages > 1 && (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+          <M3Pressable
+            onPress={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            style={{ padding: 8, opacity: page === 0 ? 0.3 : 1 }}
+          >
+            <Text style={[m3Type.labelLarge, { color: m3.primary }]}>← Prev</Text>
+          </M3Pressable>
+          <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>
+            {start + 1} - {Math.min(start + perPage, matches.length)} of {matches.length}
+          </Text>
+          <M3Pressable
+            onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page === totalPages - 1}
+            style={{ padding: 8, opacity: page === totalPages - 1 ? 0.3 : 1 }}
+          >
+            <Text style={[m3Type.labelLarge, { color: m3.primary }]}>Next →</Text>
+          </M3Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function CoachScreen() {
+  const m3 = useM3Theme();
+  const [events, setEvents] = useState<CoachEvent[]>([]);
+  const [ephemeral, setEphemeral] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+
+  const loadEvents = useCallback(async () => {
+    const evs = await getCoachEvents();
+    setEvents(evs);
+  }, []);
+
+  useEffect(() => {
+    loadEvents();
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadEvents();
+      }
+    });
+    return () => subscription.remove();
+  }, [loadEvents]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text) return;
+    
+    const newCmd: ChatMessage = {
+      id: Date.now().toString() + '_cmd',
+      type: 'command',
+      text,
+      createdAt: Date.now(),
+    };
+    
+    setInput('');
+    setEphemeral(prev => [...prev, newCmd]);
+
+    const reply = await executeCoachCommand(text);
+    const response: ChatMessage = {
+      id: (Date.now() + 1).toString() + '_resp',
+      type: 'response',
+      text: reply.text,
+      ui: reply.ui,
+      payload: reply.payload,
+      createdAt: Date.now() + 1,
+    };
+    setEphemeral(prev => [...prev, response]);
+  };
+
+  const getEventText = (type: string) => {
+    if (type === 'insufficient_steps') return "Gotta walk!";
+    if (type === 'missed_fast') return "Gotta fast!";
+    return `Coach Event: ${type}`;
+  };
+
+  const eventMessages: ChatMessage[] = events.map(e => ({
+    id: `event_${e.id}`,
+    type: 'event',
+    text: getEventText(e.type),
+    createdAt: new Date(e.created_at).getTime(),
+  }));
+
+  const allMessages = [...eventMessages, ...ephemeral].sort((a, b) => a.createdAt - b.createdAt);
+
+  return (
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: m3.surface }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.m3ScreenPad, { paddingBottom: 24, flexGrow: 1, justifyContent: 'flex-end' }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {allMessages.map(msg => {
+          const isUser = msg.type === 'command';
+          return (
+            <View
+              key={msg.id}
+              style={{
+                alignSelf: isUser ? 'flex-end' : 'flex-start',
+                backgroundColor: isUser ? m3.primary : m3.surfaceContainerHighest,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 20,
+                borderBottomRightRadius: isUser ? 4 : 20,
+                borderBottomLeftRadius: isUser ? 20 : 4,
+                marginBottom: 12,
+                maxWidth: '85%',
+              }}
+            >
+              <Text style={[m3Type.bodyLarge, { color: isUser ? m3.onPrimary : m3.onSurface }]}>
+                {msg.text}
+              </Text>
+              {msg.ui === 'bmi' && <BMIWidget payload={msg.payload} />}
+              {msg.ui === 'search' && <SearchWidget payload={msg.payload} />}
+            </View>
+          );
+        })}
+        {allMessages.length === 0 && (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={[m3Type.bodyLarge, { color: m3.onSurfaceVariant, textAlign: 'center' }]}>
+              All clear.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderTopWidth: 1, borderTopColor: m3.surfaceContainerHighest, backgroundColor: m3.surface }}>
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          placeholder="e.g. /1rm 70x5"
+          placeholderTextColor={m3.onSurfaceVariant}
+          style={[styles.m3TextInput, { flex: 1, backgroundColor: m3.surfaceContainerHighest, color: m3.onSurface, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 20, fontSize: 16, marginRight: 12 }]}
+          onSubmitEditing={handleSend}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <M3Pressable
+          onPress={handleSend}
+          scaleTo={0.9}
+          style={{
+            backgroundColor: m3.primaryContainer,
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: m3.onPrimaryContainer, fontWeight: 'bold' }}>↑</Text>
+        </M3Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}

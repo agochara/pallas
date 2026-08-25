@@ -44,6 +44,23 @@ export type NewsletterState = {
   archive_quote_2: string | null;
 };
 
+export type CoachEvent = {
+  id: number;
+  type: string;
+  created_at: string;
+  resolved: number;
+};
+
+export type CoachConfig = {
+  key: string;
+  value: number;
+};
+
+export type CoachStep = {
+  date: string;
+  steps: number;
+};
+
 let db: SQLite.SQLiteDatabase | null = null;
 
 export async function initDatabase(): Promise<void> {
@@ -90,6 +107,26 @@ export async function initDatabase(): Promise<void> {
 
     INSERT OR IGNORE INTO newsletter_settings (id, issue_number, to_self_text)
     VALUES (1, 33, '');
+
+    CREATE TABLE IF NOT EXISTS coach_config (
+      key TEXT PRIMARY KEY,
+      value INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_threshold', 7000);
+    INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_days', 3);
+    INSERT OR IGNORE INTO coach_config (key, value) VALUES ('fasting_days', 3);
+
+    CREATE TABLE IF NOT EXISTS coach_steps (
+      date TEXT PRIMARY KEY,
+      steps INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS coach_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      resolved INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   // Safe migration for existing weight tables with recorded_at column
@@ -565,4 +602,36 @@ export async function saveDailyNewsletterEdition(edition: {
       edition.archive_quote_2,
     ]
   );
+}
+// ---------- Coach ----------
+
+export async function getCoachConfig(): Promise<Record<string, number>> {
+  const rows = await getDb().getAllAsync<CoachConfig>(`SELECT * FROM coach_config`);
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+export async function getCoachEvents(): Promise<CoachEvent[]> {
+  return await getDb().getAllAsync<CoachEvent>(`SELECT * FROM coach_events WHERE resolved = 0 ORDER BY created_at ASC`);
+}
+
+export async function addCoachEvent(type: string): Promise<void> {
+  const exists = await getDb().getFirstAsync<{ id: number }>(`SELECT id FROM coach_events WHERE type = ? AND resolved = 0`, [type]);
+  if (!exists) {
+    await getDb().runAsync(`INSERT INTO coach_events (type, created_at) VALUES (?, ?)`, [type, new Date().toISOString()]);
+  }
+}
+
+export async function resolveCoachEvent(type: string): Promise<void> {
+  // Rather than retaining resolved events, delete them as requested: "delete the event from coach_events rather than retaining historical resolved events"
+  await getDb().runAsync(`DELETE FROM coach_events WHERE type = ?`, [type]);
+}
+
+export async function getCoachSteps(): Promise<CoachStep[]> {
+  return await getDb().getAllAsync<CoachStep>(`SELECT * FROM coach_steps ORDER BY date ASC`);
+}
+
+export async function updateCoachSteps(date: string, steps: number): Promise<void> {
+  await getDb().runAsync(`INSERT OR REPLACE INTO coach_steps (date, steps) VALUES (?, ?)`, [date, steps]);
+  // Keep only small recent window
+  await getDb().runAsync(`DELETE FROM coach_steps WHERE date < date('now', '-14 days')`);
 }

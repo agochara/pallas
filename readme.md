@@ -41,7 +41,7 @@ Vade Mecum is a single continuous personal notepad and commonplace book (*vade m
 
 ## Askesis 🪽
 
-Askesis is the physical-training module. It contains three tabs in order: **Fasting, Strength, and Weight**.
+Askesis is the physical-training module. It contains four tabs in order: **Fasting, Strength, Weight, and Coach**.
 
 ### Fasting
 
@@ -76,9 +76,27 @@ Weight tracks body weight measurements over time.
 
 * Records individual weight measurements with calendar date (`YYYY-MM-DD`).
 * Displays the current/latest weight prominently.
-* Renders a continuous time-series chart with adaptive time ranges (W, M, 3M, Y).
+* Renders a continuous time-series chart with adaptive time ranges (W, M, 3M, Y) using a smooth EWMA trendline and translucent measurement scatter.
 * Allows direct addition, editing, and deletion of measurements.
-* Excludes goals, calorie tracking, BMI, streaks, or unnecessary analytics (*via negativa*).
+* Excludes goals, calorie tracking, streaks, or unnecessary analytics (*via negativa*).
+
+### Coach
+
+Coach is an ephemeral chat-like interface combining passive rule-based interventions with immediate utility commands.
+
+* **Ephemeral Interface**: Conversations and command executions exist only in UI state and are never stored in SQLite.
+* **Passive Interventions**: Driven by background rules evaluated periodically via Android WorkManager:
+  * `insufficient_steps` ("Gotta walk!"): Triggered when aggregated steps from Android Health Connect fall below `steps_threshold` (default: 7,000) for `steps_days` (default: 3) consecutive calendar days.
+  * `missed_fast` ("Gotta fast!"): Triggered when no fast has been logged for `fasting_days` (default: 3) consecutive calendar days.
+  * Interventions are automatically resolved and removed from `coach_events` once the condition is met.
+* **Badge Notification**: A Material 3 indicator appears on the Coach navigation icon whenever unresolved interventions exist in the database.
+* **Slash Commands**:
+  * `/1rm <weight>x<reps>` — Calculate estimated 1 Rep Max using the Epley formula.
+  * `/bmi <weight> <height>` — Calculate Body Mass Index (weight in kg, height in cm) with category classification.
+  * `/convert <val> <kg|lbs>` — Convert between kilograms and pounds (e.g. `/convert 70kg`, `/convert 150 lbs`).
+  * `/search <pattern>` — Case-insensitive regex or substring search through bundled aphorisms (`myQuotes`).
+  * `/hc` — Request Android Health Connect permissions.
+  * `/help` — Display command reference and usage examples.
 
 ## Data & Persistence
 
@@ -93,6 +111,9 @@ The database contains:
 * `weights` — body weight history with calendar dates.
 * `vade_mecum` — continuous personal notepad content.
 * `newsletter_settings` — The Study's persistent state and settings.
+* `coach_config` — Coach threshold settings (`steps_threshold`, `steps_days`, `fasting_days`).
+* `coach_steps` — rolling 14-day window of daily aggregated steps from Health Connect.
+* `coach_events` — active unresolved Coach interventions.
 
 The database uses SQLite WAL mode.
 
@@ -119,13 +140,16 @@ The SQL console allows raw `SELECT`, `INSERT`, `UPDATE`, and `DELETE` statements
 * **Expo SDK 54**
 * **TypeScript**
 * **Expo SQLite**
+* **React Native Health Connect**
+* **Expo Task Manager Expo Task Manager & Background Fetch (Android WorkManager) Background Task (Android WorkManager)**
 * **Expo FileSystem / Sharing APIs**
 * **React Native Safe Area Context**
 * **EAS Build**
 
 ### Project structure
 
-```textpallas/
+```text
+pallas/
 ├── assets/
 │   ├── adaptive-icon.png
 │   ├── favicon.png
@@ -134,30 +158,34 @@ The SQL console allows raw `SELECT`, `INSERT`, `UPDATE`, and `DELETE` statements
 │
 ├── src/
 │   ├── askesis/
-│   │   └── screens.tsx       # Askesis UI, lifts, fasting, calendar
+│   │   └── screens.tsx         # Askesis UI, lifts, fasting, weight, coach
+│   │
+│   ├── coach/
+│   │   ├── backgroundTask.ts   # Health Connect sync & WorkManager rule evaluation
+│   │   └── commands.ts         # Slash command parser and handlers (/1rm, /bmi, etc.)
 │   │
 │   ├── content/
-│   │   ├── data.ts           # Static content / seed data
+│   │   ├── data.ts             # Static content / seed data / myQuotes
 │   │
 │   ├── database/
-│   │   ├── db.ts             # SQLite database and queries
-│   │   └── export.ts         # Data import/export
+│   │   ├── db.ts               # SQLite database, tables, and queries
+│   │   └── export.ts           # Data import/export
 │   │
 │   ├── settings/
 │   │   └── settings-screen.tsx # SQL console, data export/import, settings
 │   │
 │   ├── the-study/
-│   │   └── study.tsx         # The Study
+│   │   └── study.tsx           # The Study
 │   │
 │   ├── themes/
-│   │   └── theme.ts          # Colors, spacing, typography
+│   │   └── theme.ts            # Colors, spacing, typography
 │   │
-│   └── App.tsx               # Pallas launcher and navigation
+│   └── App.tsx                 # Pallas launcher, navigation, background worker init
 │
-├── app.json                  # Expo configuration
+├── app.json                    # Expo configuration
 ├── babel.config.js
-├── eas.json                  # EAS Build configuration
-├── index.ts                  # Entry point
+├── eas.json                    # EAS Build configuration
+├── index.ts                    # Entry point
 ├── package.json
 ├── tsconfig.json
 ├── AGENTS.md

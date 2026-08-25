@@ -2,12 +2,16 @@
   "expo": {
     "name": "Pallas",
     "slug": "logfit",
-    "version": "2.3.1",
+    "version": "2.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.n.pallas",
       "backgroundColor": "#12140e",
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/icon.png"
@@ -16,7 +20,9 @@
     "plugins": [
       "expo-asset",
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      "react-native-health-connect",
+      "expo-background-task"
     ],
     "extra": {
       "eas": {
