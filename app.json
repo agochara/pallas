@@ -22,7 +22,15 @@
       "@react-native-community/datetimepicker",
       "expo-font",
       "react-native-health-connect",
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
