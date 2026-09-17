@@ -41,7 +41,7 @@ Vade Mecum is a single continuous personal notepad and commonplace book (*vade m
 
 ## Askesis 🪽
 
-Askesis is the physical-training module. It contains four tabs in order: **Fasting, Strength, Weight, and Coach**.
+Askesis is the physical-training module. It contains five tabs in order: **Fasting, Strength, Weight, Steps, and Coach**.
 
 ### Fasting
 
@@ -57,18 +57,21 @@ The 7-day calendar displays fasting periods as a vertical bar chart with average
 
 ### Strength
 
-Six exercises are currently supported:
+Seven exercises are provided by default:
 
-* Squat
-* Bench Press
 * Deadlift
-* Clean & Press
-* Pullups
+* Clean
+* Press
+* Squat
 * Chins
+* Pullups
+* Bench Press
 
-Only the current maximum is stored for each exercise. Bodyweight-only performance can be logged with 0 kg. No exercise history is maintained.
+Users can also add custom exercises, specifying whether the exercise is:
+* **Weighted**: Displays the weight prominently (e.g. `100 kg × 5`).
+* **Bodyweight**: Displays bodyweight performance directly (e.g. `BW × 10`, or `+15 kg × 5` if weighted).
 
-A new record replaces the existing maximum when appropriate, while the Strength interface also permits direct editing or clearing of a record.
+Only the current maximum is stored for each exercise. A new record replaces the existing maximum when appropriate, while the interface also permits direct editing or clearing of a record, or deleting custom exercises.
 
 ### Weight
 
@@ -76,9 +79,18 @@ Weight tracks body weight measurements over time.
 
 * Records individual weight measurements with calendar date (`YYYY-MM-DD`).
 * Displays the current/latest weight prominently.
-* Renders a continuous time-series chart with adaptive time ranges (W, M, 3M, Y) using a smooth EWMA trendline and translucent measurement scatter.
-* Allows direct addition, editing, and deletion of measurements.
+* Renders a continuous time-series chart with adaptive time ranges (W, M, 3M, Y) using an unevenly spaced, time-weighted exponential moving average (EMA) trendline that weights observations by actual elapsed calendar days (decaying smoothly across multi-day and multi-week gaps, like Google Fit) rather than raw measurement count.
+* Provides a dedicated `History >` screen to browse, edit, or delete historical weight entries without cluttering the primary visualization interface.
 * Excludes goals, calorie tracking, streaks, or unnecessary analytics (*via negativa*).
+
+### Steps
+
+Steps monitors daily step activity synced directly from Android Health Connect.
+
+* Synchronizes daily aggregated step counts from Health Connect automatically in the background and on-demand via a 1-tap sync button.
+* Displays the 30-day daily average step count prominently on top.
+* Renders an interactive 30-day chronological bar chart with a dashed horizontal reference line at the 30-day daily average.
+* Tap any day in the 30-day chart to inspect that day's step count, exact date, and deviation from the 30-day average.
 
 ### Coach
 
@@ -107,13 +119,14 @@ Local persistence is handled by **SQLite** using `expo-sqlite`. There is current
 
 The database contains:
 
+* `exercises` — default and custom exercise definitions and display types.
 * `max_lifts` — current maximum lift for each exercise.
 * `fasts` — fasting history.
 * `weights` — body weight history with calendar dates.
 * `vade_mecum` — continuous personal notepad content.
 * `newsletter_settings` — The Study's persistent state and settings.
 * `coach_config` — Coach threshold settings (`steps_threshold`, `steps_days`, `fasting_days`).
-* `coach_steps` — rolling 15-day window of daily aggregated steps from Health Connect.
+* `coach_steps` — rolling 90-day window of daily aggregated steps from Health Connect.
 * `coach_events` — active unresolved Coach interventions.
 
 The database uses SQLite WAL mode.
@@ -129,6 +142,7 @@ Pallas Settings provides:
 
 * JSON export of application data (including lifts, fasts, weights, Vade Mecum notes, and newsletter state).
 * JSON import and merge.
+* Configurable Coach thresholds (steps threshold, steps days, fasting interval).
 * Granular deletion of lift, fasting, weight, or Vade Mecum data.
 * Complete database reset.
 * Direct SQLite query execution.
@@ -159,7 +173,8 @@ pallas/
 │
 ├── src/
 │   ├── askesis/
-│   │   └── screens.tsx         # Askesis UI, lifts, fasting, weight, coach
+│   │   ├── screens.tsx         # Askesis UI, lifts, fasting, weight, coach
+│   │   └── steps.tsx           # Steps sync, 30-day chart, and goal progress
 │   │
 │   ├── coach/
 │   │   ├── backgroundTask.ts   # Health Connect sync & WorkManager rule evaluation
@@ -173,7 +188,7 @@ pallas/
 │   │   └── export.ts           # Data import/export
 │   │
 │   ├── settings/
-│   │   └── settings-screen.tsx # SQL console, data export/import, settings
+│   │   └── settings-screen.tsx # SQL console, Coach thresholds, data export/import
 │   │
 │   ├── the-study/
 │   │   └── study.tsx           # The Study
@@ -223,7 +238,7 @@ npm install
 Start Expo:
 
 ```bash
-npx expo start
+npx expo start --tunnel
 ```
 
 Run the Expo diagnostics:
@@ -237,6 +252,7 @@ Build an Android APK through EAS:
 ```bash
 eas build -p android --profile preview
 ```
+Can also be run through gradle.
 
 ## Philosophy
 

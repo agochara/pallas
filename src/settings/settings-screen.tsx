@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,8 @@ import {
   deleteAllWeights,
   clearVadeMecum,
   deleteEverything,
+  getCoachConfig,
+  saveCoachConfig,
 } from '../database/db';
 import { exportPallasData, importPallasData } from '../database/export';
 
@@ -118,7 +120,7 @@ function SqlInfoModal({
                 { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface },
               ]}
             >
-              • exercise TEXT PRIMARY KEY ('Squat', 'Bench Press', 'Deadlift', 'Clean & Press', 'Pullups', 'Chins')
+              • exercise TEXT PRIMARY KEY ('Deadlift', 'Clean', 'Press', 'Squat', 'Chins', 'Pullups', 'Bench Press', or custom)
             </Text>
             <Text
               style={[
@@ -321,16 +323,10 @@ function SqlInfoModal({
           </Text>
           <View style={{ marginTop: 6 }}>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • id INTEGER PRIMARY KEY (1)
+              • key TEXT PRIMARY KEY ('steps_threshold', 'steps_days', 'fasting_days')
             </Text>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • steps_threshold INTEGER (e.g. 7000)
-            </Text>
-            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • steps_days INTEGER (e.g. 3)
-            </Text>
-            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • fasting_days INTEGER (e.g. 3)
+              • value INTEGER (e.g. 7000, 3)
             </Text>
           </View>
         </M3Card>
@@ -345,7 +341,7 @@ function SqlInfoModal({
             coach_steps
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
-            Rolling 15-day window of daily aggregated steps from Health Connect.
+            Rolling 90-day window of daily aggregated steps from Health Connect.
           </Text>
           <View style={{ marginTop: 6 }}>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
@@ -353,9 +349,6 @@ function SqlInfoModal({
             </Text>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
               • steps INTEGER
-            </Text>
-            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • updated_at TEXT (ISO 8601 string)
             </Text>
           </View>
         </M3Card>
@@ -374,10 +367,16 @@ function SqlInfoModal({
           </Text>
           <View style={{ marginTop: 6 }}>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • type TEXT PRIMARY KEY ('insufficient_steps', 'missed_fast')
+              • id INTEGER PRIMARY KEY AUTOINCREMENT
             </Text>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
-              • triggered_at TEXT (ISO 8601 string)
+              • type TEXT ('insufficient_steps', 'missed_fast')
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • created_at TEXT (ISO 8601 string)
+            </Text>
+            <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>
+              • resolved INTEGER (0 or 1)
             </Text>
           </View>
         </M3Card>
@@ -431,6 +430,51 @@ function SqlInfoModal({
   );
 }
 
+// ---------- Coach Config Field ----------
+
+function CoachNumberField({
+  label,
+  helper,
+  suffix,
+  value,
+  onChangeText,
+  last,
+}: {
+  label: string;
+  helper: string;
+  suffix: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  last?: boolean;
+}) {
+  const m3 = useM3Theme();
+  return (
+    <View style={{ marginBottom: last ? 0 : 18 }}>
+      <Text style={[m3Type.labelLarge, { color: m3.onSurface }]}>{label}</Text>
+      <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2, marginBottom: 8 }]}>
+        {helper}
+      </Text>
+      <View
+        style={[
+          styles.configInputWrap,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            borderColor: m3.outlineVariant,
+          },
+        ]}
+      >
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType="number-pad"
+          style={[styles.configInput, { color: m3.onSurface }]}
+        />
+        <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant }]}>{suffix}</Text>
+      </View>
+    </View>
+  );
+}
+
 // ---------- Settings Screen ----------
 
 export function SettingsScreen() {
@@ -439,6 +483,61 @@ export function SettingsScreen() {
   const [sqlQuery, setSqlQuery] = useState('');
   const [sqlResult, setSqlResult] = useState<string | null>(null);
   const [showSqlInfo, setShowSqlInfo] = useState(false);
+
+  const [stepsThreshold, setStepsThreshold] = useState('7000');
+  const [stepsDays, setStepsDays] = useState('3');
+  const [fastingDays, setFastingDays] = useState('3');
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  useEffect(() => {
+    getCoachConfig()
+      .then((config) => {
+        if (config.steps_threshold !== undefined) {
+          setStepsThreshold(String(config.steps_threshold));
+        }
+        if (config.steps_days !== undefined) {
+          setStepsDays(String(config.steps_days));
+        }
+        if (config.fasting_days !== undefined) {
+          setFastingDays(String(config.fasting_days));
+        }
+      })
+      .catch((error) => console.error('Error loading coach config:', error));
+  }, []);
+
+  async function handleSaveConfig() {
+    const threshold = parseInt(stepsThreshold, 10);
+    const days = parseInt(stepsDays, 10);
+    const fasting = parseInt(fastingDays, 10);
+
+    if (!Number.isFinite(threshold) || threshold < 1) {
+      Alert.alert('Invalid steps threshold', 'Enter a step goal of at least 1.');
+      return;
+    }
+    if (!Number.isFinite(days) || days < 1) {
+      Alert.alert('Invalid days', 'Enter a number of days of at least 1.');
+      return;
+    }
+    if (!Number.isFinite(fasting) || fasting < 1) {
+      Alert.alert('Invalid fasting interval', 'Enter an interval of at least 1 day.');
+      return;
+    }
+
+    try {
+      setSavingConfig(true);
+      await saveCoachConfig({
+        steps_threshold: threshold,
+        steps_days: days,
+        fasting_days: fasting,
+      });
+      Alert.alert('Saved', 'Coach thresholds updated.');
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Could not save the Coach thresholds.');
+    } finally {
+      setSavingConfig(false);
+    }
+  }
 
   async function handleRunSql() {
     if (!sqlQuery.trim()) return;
@@ -633,6 +732,63 @@ export function SettingsScreen() {
         onClose={() => setShowSqlInfo(false)}
         onPickExample={(q) => setSqlQuery(q)}
       />
+
+      <Text
+        style={[
+          m3Type.labelLargeEmphasized,
+          {
+            color: m3.primary,
+            marginBottom: 10,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+          },
+        ]}
+      >
+        COACH
+      </Text>
+
+      <M3Card
+        containerLevel="surfaceContainer"
+        shape="largeIncreased"
+        style={{ padding: 18, marginBottom: 24 }}
+      >
+        <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginBottom: 18 }]}>
+          Thresholds that drive Coach reminders.
+        </Text>
+
+        <CoachNumberField
+          label="Steps threshold"
+          helper="Daily step goal. Below it, Coach asks you to walk."
+          suffix="steps"
+          value={stepsThreshold}
+          onChangeText={setStepsThreshold}
+        />
+
+        <CoachNumberField
+          label="Steps days"
+          helper="Consecutive days below the goal before Coach intervenes."
+          suffix="days"
+          value={stepsDays}
+          onChangeText={setStepsDays}
+        />
+
+        <CoachNumberField
+          label="Fasting interval"
+          helper="Days without a logged fast before Coach intervenes."
+          suffix="days"
+          value={fastingDays}
+          onChangeText={setFastingDays}
+          last
+        />
+
+        <View style={{ marginTop: 20 }}>
+          <M3FilledButton
+            label={savingConfig ? 'SAVING...' : 'SAVE THRESHOLDS'}
+            onPress={handleSaveConfig}
+            disabled={savingConfig}
+          />
+        </View>
+      </M3Card>
 
       <Text
         style={[
@@ -888,6 +1044,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  configInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: m3Shape.medium,
+    paddingHorizontal: 14,
+  },
+  configInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
   },
   exampleCard: {
     padding: 14,

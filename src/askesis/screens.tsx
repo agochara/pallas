@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -65,12 +65,19 @@ function NavResetIcon({ color, size = 14 }: { color: string; size?: number }) {
 }
 import {
   Exercise,
+  ExerciseType,
+  ExerciseItem,
+  DEFAULT_EXERCISES,
   EXERCISES,
   LiftRecord,
   Fast,
   WeightEntry,
   setLift,
   deleteLift,
+  getExercises,
+  addCustomExercise,
+  deleteCustomExercise,
+  getAllMaxLifts,
   getActiveFast,
   startFast,
   endFast,
@@ -101,6 +108,7 @@ import {
 
 export { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme };
 export { M3Card, M3Pressable, M3FilledButton, M3TonalButton, M3ErrorButton, M3SegmentedButton, M3BottomSheet, M3TopAppBar, M3FAB };
+export { StepsScreen } from './steps';
 
 // ============================================================================
 // FORMATTING & CALENDAR TIME-SPLITTING HELPERS
@@ -519,14 +527,35 @@ function WeightTimeSeriesChart({
   const drawHeight = chartHeight - padTop - padBottom;
   const timeSpan = window.endMs - window.startMs || 1;
 
-  const inWindow = entries
-    .filter((e) => {
-      const t = parseDateStringToMs(e.date);
-      return t >= window.startMs && t <= window.endMs;
-    })
-    .sort((a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date));
+  // Sort all available historical entries to compute continuous-time EMA
+  const sortedAll = [...entries].sort(
+    (a, b) => parseDateStringToMs(a.date) - parseDateStringToMs(b.date)
+  );
 
-  const weightsInWindow = inWindow.map((e) => e.weight);
+  // Time-weighted EMA calculation across the timeline (like Google Fit / continuous-time filtering)
+  // Daily alpha0 = 0.2 corresponds to a half-life of ~3.1 days (tau = 4.48 days)
+  // For elapsed time deltaDays = (t_i - t_{i-1}) / 86400000:
+  // alpha = 1 - (1 - alpha0)^deltaDays = 1 - 0.8^deltaDays
+  let runningEma = sortedAll.length > 0 ? sortedAll[0].weight : 75;
+  let lastTimeMs = sortedAll.length > 0 ? parseDateStringToMs(sortedAll[0].date) : 0;
+
+  const allWithEma = sortedAll.map((e, idx) => {
+    const t = parseDateStringToMs(e.date);
+    if (idx > 0) {
+      const deltaDays = Math.max(0, (t - lastTimeMs) / 86400000);
+      const alpha = 1 - Math.pow(0.8, deltaDays);
+      runningEma = e.weight * alpha + runningEma * (1 - alpha);
+      lastTimeMs = t;
+    }
+    return { entry: e, t, ema: runningEma };
+  });
+
+  // Filter entries within the currently visible time window
+  const inWindow = allWithEma.filter(
+    (p) => p.t >= window.startMs && p.t <= window.endMs
+  );
+
+  const weightsInWindow = inWindow.map((p) => p.entry.weight);
   const rawMin = weightsInWindow.length > 0 ? Math.min(...weightsInWindow) : 70;
   const rawMax = weightsInWindow.length > 0 ? Math.max(...weightsInWindow) : 80;
   const pad = Math.max(2, (rawMax - rawMin) * 0.2);
@@ -534,29 +563,17 @@ function WeightTimeSeriesChart({
   const maxW = Math.ceil(rawMax + pad);
   const yRange = maxW - minW || 1;
 
-  const mappedPoints = inWindow.map((e) => {
-    const t = parseDateStringToMs(e.date);
-    const xPct = Math.max(0, Math.min(1, (t - window.startMs) / timeSpan));
+  const mappedPoints = inWindow.map((p) => {
+    const xPct = Math.max(0, Math.min(1, (p.t - window.startMs) / timeSpan));
     const x = padLeft + xPct * drawWidth;
-    const y = padTop + ((maxW - e.weight) / yRange) * drawHeight;
-    return { x, y, entry: e, t };
+    const y = padTop + ((maxW - p.entry.weight) / yRange) * drawHeight;
+    const trendY = padTop + ((maxW - p.ema) / yRange) * drawHeight;
+    return { x, y, trendY, entry: p.entry, t: p.t, ema: p.ema };
   });
 
-  // Calculate EMA Trendline
-  let trendPointsArr = [];
-  if (mappedPoints.length > 0) {
-    let ema = mappedPoints[0].entry.weight;
-    // We can use a time-weighted alpha if we wanted, but a simple alpha over sorted points 
-    // gives a pleasant Google Fit style smooth curve.
-    const alpha = 0.2; 
-    for (let i = 0; i < mappedPoints.length; i++) {
-      const pt = mappedPoints[i];
-      ema = (pt.entry.weight * alpha) + (ema * (1 - alpha));
-      const trendY = padTop + ((maxW - ema) / yRange) * drawHeight;
-      trendPointsArr.push(`${pt.x.toFixed(1)},${trendY.toFixed(1)}`);
-    }
-  }
-  const trendPolyline = trendPointsArr.join(' ');
+  const trendPolyline = mappedPoints
+    .map((pt) => `${pt.x.toFixed(1)},${pt.trendY.toFixed(1)}`)
+    .join(' ');
 
   const midW = Math.round((minW + maxW) / 2);
   const yTicks = [
@@ -788,6 +805,110 @@ function EditWeightModal({
   );
 }
 
+function WeightHistoryModal({
+  visible,
+  weights,
+  onClose,
+  onSelectEntry,
+}: {
+  visible: boolean;
+  weights: WeightEntry[];
+  onClose: () => void;
+  onSelectEntry: (entry: WeightEntry) => void;
+}) {
+  const m3 = useM3Theme();
+
+  // Sort reverse-chronological (newest first)
+  const sorted = useMemo(() => {
+    return [...weights].sort(
+      (a, b) => parseDateStringToMs(b.date) - parseDateStringToMs(a.date)
+    );
+  }, [weights]);
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: m3.surface }}>
+        {/* Top App Bar with back chevron */}
+        <M3TopAppBar title="Weight History" onBack={onClose} />
+
+        <ScrollView
+          contentContainerStyle={[styles.m3ScreenPad, { paddingBottom: 40 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ marginBottom: 14 }}>
+            <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+              All Recorded Measurements
+            </Text>
+            <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+              {sorted.length} {sorted.length === 1 ? 'entry' : 'entries'} · tap to edit or delete
+            </Text>
+          </View>
+
+          {sorted.length === 0 ? (
+            <M3Card containerLevel="surfaceContainer" shape="large" style={{ padding: 24, alignItems: 'center' }}>
+              <Text style={[m3Type.bodyMedium, { color: m3.onSurfaceVariant, textAlign: 'center' }]}>
+                No weight measurements recorded yet.
+              </Text>
+            </M3Card>
+          ) : (
+            <M3Card containerLevel="surfaceContainer" shape="large" style={{ padding: 0, overflow: 'hidden' }}>
+              {sorted.map((item, idx) => {
+                const nextItem = sorted[idx + 1];
+                const delta = nextItem ? item.weight - nextItem.weight : null;
+
+                return (
+                  <M3Pressable
+                    key={item.id}
+                    onPress={() => onSelectEntry(item)}
+                    scaleTo={0.98}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      borderBottomWidth: idx < sorted.length - 1 ? StyleSheet.hairlineWidth : 0,
+                      borderBottomColor: m3.outlineVariant,
+                    }}
+                  >
+                    <View>
+                      <Text style={[m3Type.titleSmallEmphasized, { color: m3.onSurface }]}>
+                        {formatShortDate(item.date)}
+                      </Text>
+                      <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>
+                        {item.date.slice(0, 10)}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+                          {item.weight.toFixed(1)} kg
+                        </Text>
+                        {delta !== null && (
+                          <Text
+                            style={[
+                              m3Type.labelSmallEmphasized,
+                              { color: delta > 0 ? m3.error : delta < 0 ? m3.primary : m3.onSurfaceVariant },
+                            ]}
+                          >
+                            {delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : '±0.0'} kg
+                          </Text>
+                        )}
+                      </View>
+                      <NavChevronRight color={m3.onSurfaceVariant} size={15} />
+                    </View>
+                  </M3Pressable>
+                );
+              })}
+            </M3Card>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 export function WeightScreen() {
   const m3 = useM3Theme();
   const [weights, setWeights] = useState<WeightEntry[]>([]);
@@ -795,6 +916,7 @@ export function WeightScreen() {
   const [timeRange, setTimeRange] = useState<TimeRange>('Y');
   const [rangeOffset, setRangeOffset] = useState<number>(0);
   const [showAdd, setShowAdd] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<WeightEntry | null>(null);
 
   const load = useCallback(async () => {
@@ -933,6 +1055,35 @@ export function WeightScreen() {
         />
       </M3Card>
 
+      {/* History Entry Point */}
+      <M3Card shape="large" style={{ marginBottom: 80 }}>
+        <M3Pressable
+          onPress={() => setShowHistory(true)}
+          scaleTo={0.98}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+          }}
+        >
+          <View>
+            <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
+              History
+            </Text>
+            <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
+              {weights.length === 0
+                ? 'No recorded measurements'
+                : `${weights.length} measurement${weights.length === 1 ? '' : 's'} recorded`}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[m3Type.labelMedium, { color: m3.primary }]}>View all</Text>
+            <NavChevronRight color={m3.onSurfaceVariant} size={16} />
+          </View>
+        </M3Pressable>
+      </M3Card>
 
       <AddWeightModal
         visible={showAdd}
@@ -944,6 +1095,14 @@ export function WeightScreen() {
         entry={editing}
         onClose={() => setEditing(null)}
         onSaved={load}
+      />
+      <WeightHistoryModal
+        visible={showHistory}
+        weights={weights}
+        onClose={() => setShowHistory(false)}
+        onSelectEntry={(entry) => {
+          setEditing(entry);
+        }}
       />
     </ScrollView>
 
@@ -959,6 +1118,83 @@ export function WeightScreen() {
 // 2. STRENGTH MODULE (Material 3 Expressive - Semantic Content Hierarchy)
 // ============================================================================
 
+function AddCustomExerciseModal({
+  visible,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const m3 = useM3Theme();
+  const [name, setName] = useState('');
+  const [type, setType] = useState<ExerciseType>('weighted');
+
+  useEffect(() => {
+    if (visible) {
+      setName('');
+      setType('weighted');
+    }
+  }, [visible]);
+
+  async function handleSave() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      Alert.alert('Name required', 'Please enter an exercise name.');
+      return;
+    }
+    await addCustomExercise(trimmed, type);
+    onSaved();
+    onClose();
+  }
+
+  const TYPE_OPTIONS: { key: ExerciseType; label: string }[] = [
+    { key: 'weighted', label: 'Weighted' },
+    { key: 'bodyweight', label: 'Bodyweight' },
+  ];
+
+  return (
+    <M3BottomSheet visible={visible} title="Add Exercise" onClose={onClose}>
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>
+        Exercise Name
+      </Text>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder="e.g. Overhead Squat, Dips"
+        placeholderTextColor={m3.onSurfaceVariant}
+        autoFocus
+        style={[
+          styles.m3TextInput,
+          {
+            backgroundColor: m3.surfaceContainerHighest,
+            color: m3.onSurface,
+          },
+        ]}
+      />
+
+      <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant, marginTop: 16, marginBottom: 8 }]}>
+        Exercise Type
+      </Text>
+      <M3SegmentedButton
+        options={TYPE_OPTIONS}
+        selected={type}
+        onSelect={(t) => setType(t)}
+      />
+      <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 8 }]}>
+        {type === 'weighted'
+          ? 'Weighted (e.g. Squat, Deadlift): Displayed prominently as WEIGHT with small reps.'
+          : 'Bodyweight (e.g. Pullups, Dips): Displayed as BW × Reps (or X kg × Reps).'}
+      </Text>
+
+      <View style={{ marginTop: 24 }}>
+        <M3FilledButton label="Create Exercise" onPress={handleSave} />
+      </View>
+    </M3BottomSheet>
+  );
+}
+
 function EditLiftModal({
   visible,
   exercise,
@@ -967,7 +1203,7 @@ function EditLiftModal({
   onSaved,
 }: {
   visible: boolean;
-  exercise: Exercise | null;
+  exercise: ExerciseItem | null;
   currentRecord: LiftRecord | null;
   onClose: () => void;
   onSaved: () => void;
@@ -991,7 +1227,7 @@ function EditLiftModal({
       Alert.alert('Invalid input', 'Please enter valid numbers for weight and reps.');
       return;
     }
-    await setLift(exercise, w, r);
+    await setLift(exercise.name, w, r);
     onSaved();
     onClose();
   }
@@ -1000,14 +1236,34 @@ function EditLiftModal({
     if (!exercise) return;
     Alert.alert(
       'Clear Record?',
-      `Clear the maximum record for ${exercise}?`,
+      `Clear the maximum record for ${exercise.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
           style: 'destructive',
           onPress: async () => {
-            await deleteLift(exercise);
+            await deleteLift(exercise.name);
+            onSaved();
+            onClose();
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleDeleteExercise() {
+    if (!exercise) return;
+    Alert.alert(
+      'Delete Custom Exercise?',
+      `Delete "${exercise.name}" and any associated record?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteCustomExercise(exercise.name);
             onSaved();
             onClose();
           },
@@ -1019,9 +1275,11 @@ function EditLiftModal({
   if (!exercise) return null;
 
   return (
-    <M3BottomSheet visible={visible} title={`Record ${exercise}`} onClose={onClose}>
+    <M3BottomSheet visible={visible} title={`Record ${exercise.name}`} onClose={onClose}>
       <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>
-        Weight added (kg) · Enter 0 for bodyweight
+        {exercise.type === 'bodyweight'
+          ? 'Additional weight added (kg) · Enter 0 for bodyweight'
+          : 'Weight lifted (kg) · Enter 0 for bodyweight'}
       </Text>
       <TextInput
         value={weight}
@@ -1061,6 +1319,9 @@ function EditLiftModal({
         {currentRecord && (
           <M3ErrorButton label="Clear Record" onPress={handleDelete} />
         )}
+        {exercise.is_custom === 1 && (
+          <M3ErrorButton label="Delete Exercise" onPress={handleDeleteExercise} />
+        )}
       </View>
     </M3BottomSheet>
   );
@@ -1068,31 +1329,28 @@ function EditLiftModal({
 
 export function StrengthScreen() {
   const m3 = useM3Theme();
-  const [maxLifts, setMaxLifts] =
-    useState<Record<Exercise, LiftRecord | null> | null>(null);
-  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [exercises, setExercises] = useState<ExerciseItem[]>([]);
+  const [maxLifts, setMaxLifts] = useState<Record<string, LiftRecord | null>>({});
+  const [editingExercise, setEditingExercise] = useState<ExerciseItem | null>(null);
+  const [showAddExercise, setShowAddExercise] = useState(false);
 
   const load = useCallback(async () => {
-    const entries = await Promise.all(
-      EXERCISES.map(async (ex) => [ex, await getMaxLift(ex)] as const)
-    );
-
-    setMaxLifts(
-      Object.fromEntries(entries) as Record<
-        Exercise,
-        LiftRecord | null
-      >
-    );
+    const list = await getExercises();
+    setExercises(list);
+    const lifts = await getAllMaxLifts();
+    const liftMap: Record<string, LiftRecord> = {};
+    lifts.forEach((l) => {
+      liftMap[l.exercise] = l;
+    });
+    setMaxLifts(liftMap);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Canonical priority: Deadlift -> Clean & Press -> Squat -> Chins -> Pullups -> Bench Press
-  // Recorded exercises appear first in canonical order, followed by unrecorded exercises in canonical order
-  const recordedExercises = maxLifts ? EXERCISES.filter((ex) => !!maxLifts[ex]) : [];
-  const unrecordedExercises = maxLifts ? EXERCISES.filter((ex) => !maxLifts[ex]) : [];
+  const recordedExercises = exercises.filter((ex) => !!maxLifts[ex.name]);
+  const unrecordedExercises = exercises.filter((ex) => !maxLifts[ex.name]);
 
   return (
     <ScrollView
@@ -1104,18 +1362,23 @@ export function StrengthScreen() {
         <View>
           <Text style={[m3Type.headlineLargeEmphasized, { color: m3.onSurface }]}>Strength</Text>
         </View>
+        <M3TonalButton
+          label="+ Exercise"
+          onPress={() => setShowAddExercise(true)}
+          style={{ height: 38, paddingHorizontal: 14 }}
+        />
       </View>
 
-      {maxLifts && (
-        <>
-          {/* Recorded Exercises Grid (2-column layout) */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+      {/* Recorded Exercises Grid (2-column layout) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
         {recordedExercises.map((ex) => {
-          const rec = maxLifts?.[ex];
+          const rec = maxLifts[ex.name];
           if (!rec) return null;
+          const isBw = ex.type === 'bodyweight';
+
           return (
             <Pressable
-              key={ex}
+              key={ex.name}
               onPress={() => setEditingExercise(ex)}
               style={{ width: '48%', marginBottom: 16 }}
             >
@@ -1142,12 +1405,12 @@ export function StrengthScreen() {
                   ]}
                   numberOfLines={1}
                 >
-                  {ex}
+                  {ex.name}
                 </Text>
 
                 {/* Hero Lift Value */}
                 <View style={{ marginVertical: 16, alignItems: 'center', justifyContent: 'center' }}>
-                  {ex === 'Chins' || ex === 'Pullups' ? (
+                  {isBw ? (
                     <Text style={[m3Type.headlineMediumEmphasized, { color: m3.pallasBlue, textAlign: 'center' }]}>
                       {rec.weight === 0
                         ? `BW × ${rec.reps}`
@@ -1155,7 +1418,7 @@ export function StrengthScreen() {
                     </Text>
                   ) : rec.weight === 0 ? (
                     <Text style={[m3Type.headlineMediumEmphasized, { color: m3.pallasBlue, textAlign: 'center' }]}>
-                      BW × {rec.reps}
+                      BW × ${rec.reps}
                     </Text>
                   ) : (
                     <>
@@ -1184,7 +1447,7 @@ export function StrengthScreen() {
       {/* Unrecorded Exercises (Compact List) */}
       <View style={{ marginTop: 8 }}>
         {unrecordedExercises.map((ex) => (
-          <Pressable key={ex} onPress={() => setEditingExercise(ex)}>
+          <Pressable key={ex.name} onPress={() => setEditingExercise(ex)}>
             <View
               style={[
                 styles.m3EmptyExerciseRow,
@@ -1195,10 +1458,10 @@ export function StrengthScreen() {
             >
               <View>
                 <Text style={[m3Type.titleSmallEmphasized, { color: m3.onSurface }]}>
-                  {ex}
+                  {ex.name}
                 </Text>
                 <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
-                  No record set
+                  {ex.type === 'bodyweight' ? 'Bodyweight' : 'Weighted'} · No record set
                 </Text>
               </View>
 
@@ -1211,14 +1474,17 @@ export function StrengthScreen() {
           </Pressable>
         ))}
       </View>
-        </>
-      )}
 
       <EditLiftModal
         visible={!!editingExercise}
         exercise={editingExercise}
-        currentRecord={editingExercise ? maxLifts?.[editingExercise] ?? null : null}
+        currentRecord={editingExercise ? maxLifts[editingExercise.name] ?? null : null}
         onClose={() => setEditingExercise(null)}
+        onSaved={load}
+      />
+      <AddCustomExerciseModal
+        visible={showAddExercise}
+        onClose={() => setShowAddExercise(false)}
         onSaved={load}
       />
     </ScrollView>

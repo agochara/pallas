@@ -1,21 +1,26 @@
 import * as SQLite from 'expo-sqlite';
 
-export type Exercise =
-  | 'Squat'
-  | 'Bench Press'
-  | 'Deadlift'
-  | 'Clean & Press'
-  | 'Pullups'
-  | 'Chins';
+export type ExerciseType = 'weighted' | 'bodyweight';
 
-export const EXERCISES: Exercise[] = [
-  'Deadlift',
-  'Clean & Press',
-  'Squat',
-  'Chins',
-  'Pullups',
-  'Bench Press',
+export type ExerciseItem = {
+  name: string;
+  type: ExerciseType;
+  is_custom: number;
+};
+
+export type Exercise = string;
+
+export const DEFAULT_EXERCISES: { name: string; type: ExerciseType }[] = [
+  { name: 'Deadlift', type: 'weighted' },
+  { name: 'Clean', type: 'weighted' },
+  { name: 'Press', type: 'weighted' },
+  { name: 'Squat', type: 'weighted' },
+  { name: 'Chins', type: 'bodyweight' },
+  { name: 'Pullups', type: 'bodyweight' },
+  { name: 'Bench Press', type: 'weighted' },
 ];
+
+export const EXERCISES: Exercise[] = DEFAULT_EXERCISES.map((e) => e.name);
 
 export type LiftRecord = {
   exercise: Exercise;
@@ -127,6 +132,28 @@ export async function initDatabase(): Promise<void> {
       created_at TEXT NOT NULL,
       resolved INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS exercises (
+      name TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'weighted',
+      is_custom INTEGER NOT NULL DEFAULT 0
+    );
+
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Deadlift', 'weighted', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Clean', 'weighted', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Press', 'weighted', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Squat', 'weighted', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Chins', 'bodyweight', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Pullups', 'bodyweight', 0);
+    INSERT OR IGNORE INTO exercises (name, type, is_custom) VALUES ('Bench Press', 'weighted', 0);
+
+    -- Migration: Clean & Press -> Clean and Press
+    INSERT OR IGNORE INTO max_lifts (exercise, weight, reps)
+      SELECT 'Clean', weight, reps FROM max_lifts WHERE exercise = 'Clean & Press';
+    INSERT OR IGNORE INTO max_lifts (exercise, weight, reps)
+      SELECT 'Press', weight, reps FROM max_lifts WHERE exercise = 'Clean & Press';
+    DELETE FROM max_lifts WHERE exercise = 'Clean & Press';
+    DELETE FROM exercises WHERE name = 'Clean & Press';
   `);
 
   // Safe migration for existing weight tables with recorded_at column
@@ -185,6 +212,28 @@ export async function getMaxLift(
     `SELECT * FROM max_lifts WHERE exercise = ?`,
     [exercise]
   );
+}
+
+export async function getAllMaxLifts(): Promise<LiftRecord[]> {
+  return await getDb().getAllAsync<LiftRecord>(`SELECT * FROM max_lifts`);
+}
+
+export async function getExercises(): Promise<ExerciseItem[]> {
+  return await getDb().getAllAsync<ExerciseItem>(
+    `SELECT * FROM exercises ORDER BY is_custom ASC, rowid ASC`
+  );
+}
+
+export async function addCustomExercise(name: string, type: ExerciseType): Promise<void> {
+  await getDb().runAsync(
+    `INSERT OR REPLACE INTO exercises (name, type, is_custom) VALUES (?, ?, 1)`,
+    [name.trim(), type]
+  );
+}
+
+export async function deleteCustomExercise(name: string): Promise<void> {
+  await getDb().runAsync(`DELETE FROM exercises WHERE name = ? AND is_custom = 1`, [name]);
+  await getDb().runAsync(`DELETE FROM max_lifts WHERE exercise = ?`, [name]);
 }
 
 // ---------- Fasts ----------
@@ -610,6 +659,25 @@ export async function getCoachConfig(): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+export async function saveCoachConfig(
+  config: Partial<Record<string, number>>
+): Promise<void> {
+  const entries = Object.entries(config).filter(
+    (entry): entry is [string, number] =>
+      typeof entry[1] === 'number' && Number.isFinite(entry[1])
+  );
+  const database = getDb();
+  await database.withTransactionAsync(async () => {
+    for (const [key, value] of entries) {
+      await database.runAsync(
+        `INSERT INTO coach_config (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        [key, Math.round(value)]
+      );
+    }
+  });
+}
+
 export async function getCoachEvents(): Promise<CoachEvent[]> {
   return await getDb().getAllAsync<CoachEvent>(`SELECT * FROM coach_events WHERE resolved = 0 ORDER BY created_at ASC`);
 }
@@ -630,8 +698,19 @@ export async function getCoachSteps(): Promise<CoachStep[]> {
   return await getDb().getAllAsync<CoachStep>(`SELECT * FROM coach_steps ORDER BY date ASC`);
 }
 
+export async function getPastSteps(days: number = 30): Promise<CoachStep[]> {
+  return await getDb().getAllAsync<CoachStep>(
+    `SELECT * FROM coach_steps WHERE date >= date('now', '-' || ? || ' days') ORDER BY date ASC`,
+    [days]
+  );
+}
+
 export async function updateCoachSteps(date: string, steps: number): Promise<void> {
   await getDb().runAsync(`INSERT OR REPLACE INTO coach_steps (date, steps) VALUES (?, ?)`, [date, steps]);
-  // Keep only small recent window
-  await getDb().runAsync(`DELETE FROM coach_steps WHERE date < date('now', '-14 days')`);
+  // Retain historical window for graphs and coaching
+  await getDb().runAsync(`DELETE FROM coach_steps WHERE date < date('now', '-90 days')`);
+}
+
+export async function deleteCoachStep(date: string): Promise<void> {
+  await getDb().runAsync(`DELETE FROM coach_steps WHERE date = ?`, [date]);
 }

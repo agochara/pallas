@@ -318,39 +318,28 @@ export function M3FAB({
   const m3 = useM3Theme();
   
   return (
-    <M3Pressable
-      onPress={onPress}
-      scaleTo={0.92}
-      style={[
-        {
-          position: 'absolute',
-          bottom: 24,
-          right: 24,
-          backgroundColor: m3.primaryContainer,
-          borderRadius: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: label ? 20 : 16,
-          height: 56,
-          minWidth: 56,
-          shadowColor: m3.scrim,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-          elevation: 4,
-          zIndex: 100,
-        },
-        style,
-      ]}
-    >
-      {icon && <View style={label ? { marginRight: 8 } : {}}>{icon}</View>}
-      {label && (
-        <Text style={[m3Type.labelLargeEmphasized, { color: m3.onPrimaryContainer }]}>
-          {label}
-        </Text>
-      )}
-    </M3Pressable>
+    <View style={styles.fabWrap}>
+      <M3Pressable
+        onPress={onPress}
+        scaleTo={0.92}
+        style={[
+          styles.fab,
+          {
+            backgroundColor: m3.primaryContainer,
+            shadowColor: m3.scrim,
+            paddingHorizontal: label ? 20 : 16,
+          },
+          style,
+        ]}
+      >
+        {icon && <View style={label ? { marginRight: 8 } : {}}>{icon}</View>}
+        {label && (
+          <Text style={[m3Type.labelLargeEmphasized, { color: m3.onPrimaryContainer }]}>
+            {label}
+          </Text>
+        )}
+      </M3Pressable>
+    </View>
   );
 }
 
@@ -375,30 +364,32 @@ export function M3SegmentedButton<T extends string>({
       {options.map((opt) => {
         const active = selected === opt.key;
         return (
-          <M3Pressable
-            key={opt.key}
-            onPress={() => onSelect(opt.key)}
-            scaleTo={0.95}
-            style={[
-              styles.segmentItem,
-              active && {
-                backgroundColor: m3.secondaryContainer,
-                borderRadius: m3Shape.full,
-              },
-            ]}
-          >
-            <Text
+          <View key={opt.key} style={styles.segmentSlot}>
+            <M3Pressable
+              onPress={() => onSelect(opt.key)}
+              scaleTo={0.95}
               style={[
-                active ? m3Type.labelMediumEmphasized : m3Type.labelMedium,
-                {
-                  color: active ? m3.onSecondaryContainer : m3.onSurfaceVariant,
-                  textAlign: 'center',
+                styles.segmentItem,
+                active && {
+                  backgroundColor: m3.secondaryContainer,
+                  borderRadius: m3Shape.full,
                 },
               ]}
             >
-              {opt.label}
-            </Text>
-          </M3Pressable>
+              <Text
+                numberOfLines={1}
+                style={[
+                  active ? m3Type.labelMediumEmphasized : m3Type.labelMedium,
+                  {
+                    color: active ? m3.onSecondaryContainer : m3.onSurfaceVariant,
+                    textAlign: 'center',
+                  },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </M3Pressable>
+          </View>
         );
       })}
     </View>
@@ -566,15 +557,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
+  fabWrap: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    zIndex: 100,
+  },
+  fab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 56,
+    minWidth: 56,
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   segmentedWrap: {
     flexDirection: 'row',
     borderRadius: m3Shape.full,
     padding: 3,
     marginBottom: 16,
   },
-  segmentItem: {
+  segmentSlot: {
     flex: 1,
-    paddingVertical: 7,
+  },
+  segmentItem: {
+    alignSelf: 'stretch',
+    minHeight: 40,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },

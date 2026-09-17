@@ -19,6 +19,63 @@ const toLocalIso = (d: Date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+export async function syncStepsFromHealthConnect(days: number = 30): Promise<{
+  success: boolean;
+  updatedCount: number;
+  hasPermission: boolean;
+  error?: string;
+}> {
+  try {
+    const isInitialized = await initialize();
+    if (!isInitialized) {
+      return { success: false, updatedCount: 0, hasPermission: false, error: 'Health Connect failed to initialize' };
+    }
+
+    const granted = await getGrantedPermissions();
+    const hasReadSteps = granted.some((p) => p.recordType === 'Steps' && p.accessType === 'read');
+    if (!hasReadSteps) {
+      return { success: false, updatedCount: 0, hasPermission: false, error: 'Steps read permission not granted' };
+    }
+
+    let updated = 0;
+    for (let i = 0; i < days; i++) {
+      const dateStr = new Date();
+      dateStr.setDate(dateStr.getDate() - i);
+      dateStr.setHours(0, 0, 0, 0);
+
+      const nextDay = new Date(dateStr);
+      nextDay.setDate(nextDay.getDate() + 1);
+
+      const stepsData = await aggregateRecord({
+        recordType: 'Steps',
+        timeRangeFilter: {
+          operator: 'between',
+          startTime: dateStr.toISOString(),
+          endTime: nextDay.toISOString(),
+        },
+      });
+
+      let totalSteps = Number(stepsData?.COUNT_TOTAL);
+      if (!Number.isFinite(totalSteps) || totalSteps < 0) {
+        totalSteps = 0;
+      }
+
+      const localIsoStr = toLocalIso(dateStr);
+      await updateCoachSteps(localIsoStr, totalSteps);
+      updated++;
+    }
+
+    return { success: true, updatedCount: updated, hasPermission: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      updatedCount: 0,
+      hasPermission: false,
+      error: err?.message || String(err),
+    };
+  }
+}
+
 export async function executeCoachSync() {
   try {
     // 1. FASTING RULE (Independent)
@@ -61,86 +118,49 @@ export async function executeCoachSync() {
 
     // 2. STEPS RULE
     try {
-      const isInitialized = await initialize();
-      
-      if (!isInitialized) {
-        // Transient initialization failure (e.g. HC temporarily unavailable).
-        // Skip step evaluation this cycle. We do NOT clear the event here.
-        console.warn('Health Connect failed to initialize. Skipping steps rule.');
-      } else {
-        const granted = await getGrantedPermissions();
-        const hasReadSteps = granted.some(p => p.recordType === 'Steps' && p.accessType === 'read');
+      const syncResult = await syncStepsFromHealthConnect(30);
 
-        if (!hasReadSteps) {
-          // Initialization succeeded, but user genuinely has not granted/revoked permission.
-          await resolveCoachEvent('insufficient_steps');
+      if (!syncResult.hasPermission && syncResult.error === 'Steps read permission not granted') {
+        await resolveCoachEvent('insufficient_steps');
+      } else if (syncResult.success) {
+        // Fetch config for steps separately to ensure rule independence
+        const config = await getCoachConfig();
+        const stepThreshold = config.steps_threshold ?? 7000;
+        const stepDays = config.steps_days ?? 3;
+
+        const history = await getCoachSteps();
+
+        const todayStrForRule = toLocalIso(new Date());
+        const completedHistory = history.filter((s) => s.date < todayStrForRule);
+
+        let anyDaySufficient = false;
+
+        // First check if today has already met the requirement
+        const todayRecord = history.find((s) => s.date === todayStrForRule);
+        if (todayRecord && todayRecord.steps >= stepThreshold) {
+          anyDaySufficient = true;
+        }
+
+        if (!anyDaySufficient) {
+          // Check the past stepDays
+          for (let i = 1; i <= stepDays; i++) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dStr = toLocalIso(d);
+
+            const record = completedHistory.find((s) => s.date === dStr);
+            const steps = record ? record.steps : 0;
+            if (steps >= stepThreshold) {
+              anyDaySufficient = true;
+              break;
+            }
+          }
+        }
+
+        if (!anyDaySufficient) {
+          await addCoachEvent('insufficient_steps');
         } else {
-          // Sync today and the past 14 days
-          for (let i = 0; i <= 14; i++) {
-            const dateStr = new Date();
-            dateStr.setDate(dateStr.getDate() - i);
-            dateStr.setHours(0, 0, 0, 0);
-            
-            const nextDay = new Date(dateStr);
-            nextDay.setDate(nextDay.getDate() + 1);
-
-            const stepsData = await aggregateRecord({
-              recordType: 'Steps',
-              timeRangeFilter: {
-                operator: 'between',
-                startTime: dateStr.toISOString(),
-                endTime: nextDay.toISOString(),
-              }
-            });
-            
-            let totalSteps = Number(stepsData?.COUNT_TOTAL);
-            if (!Number.isFinite(totalSteps) || totalSteps < 0) {
-              totalSteps = 0;
-            }
-
-            const localIsoStr = toLocalIso(dateStr);
-            await updateCoachSteps(localIsoStr, totalSteps);
-          }
-
-          // Fetch config for steps separately to ensure rule independence
-          const config = await getCoachConfig();
-          const stepThreshold = config.steps_threshold ?? 7000;
-          const stepDays = config.steps_days ?? 3;
-          
-          const history = await getCoachSteps();
-          
-          const todayStrForRule = toLocalIso(new Date());
-          const completedHistory = history.filter(s => s.date < todayStrForRule);
-          
-          let anyDaySufficient = false;
-          
-          // First check if today has already met the requirement
-          const todayRecord = history.find(s => s.date === todayStrForRule);
-          if (todayRecord && todayRecord.steps >= stepThreshold) {
-            anyDaySufficient = true;
-          }
-
-          if (!anyDaySufficient) {
-            // Check the past stepDays
-            for (let i = 1; i <= stepDays; i++) {
-              const d = new Date();
-              d.setDate(d.getDate() - i);
-              const dStr = toLocalIso(d);
-              
-              const record = completedHistory.find(s => s.date === dStr);
-              const steps = record ? record.steps : 0;
-              if (steps >= stepThreshold) {
-                anyDaySufficient = true;
-                break;
-              }
-            }
-          }
-          
-          if (!anyDaySufficient) {
-            await addCoachEvent('insufficient_steps');
-          } else {
-            await resolveCoachEvent('insufficient_steps');
-          }
+          await resolveCoachEvent('insufficient_steps');
         }
       }
     } catch (err) {

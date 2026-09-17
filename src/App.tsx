@@ -30,6 +30,7 @@ import {
   FastingScreen,
   StrengthScreen,
   WeightScreen,
+  StepsScreen,
   CoachScreen,
 } from './askesis/screens';
 import { SettingsScreen } from './settings/settings-screen';
@@ -44,7 +45,7 @@ import {
   EBGaramond_400Regular_Italic,
 } from '@expo-google-fonts/eb-garamond';
 
-type AskesisTab = 'fasting' | 'strength' | 'weight' | 'coach';
+type AskesisTab = 'fasting' | 'strength' | 'weight' | 'steps' | 'coach';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -64,6 +65,7 @@ const ASKESIS_TABS: { key: AskesisTab; label: string }[] = [
   { key: 'fasting', label: 'Fasting' },
   { key: 'strength', label: 'Strength' },
   { key: 'weight', label: 'Weight' },
+  { key: 'steps', label: 'Steps' },
   { key: 'coach', label: 'Coach' },
 ];
 
@@ -94,6 +96,23 @@ function WeightTabIcon({ color }: { color: string }) {
       <Rect x="3" y="3" width="18" height="18" rx="5" stroke={color} strokeWidth="2" />
       <Path d="M7 8.5C7 8.5 9 6.5 12 6.5C15 6.5 17 8.5 17 8.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
       <Line x1="12" y1="10" x2="14" y2="7.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function StepsTabIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      {/* Left footprint */}
+      <Path
+        d="M6 13.5C6 11.8 7 10.5 8 10.5C9 10.5 10 11.8 10 13.5C10 15 9.2 16 8 16C6.8 16 6 15 6 13.5ZM6.5 19C6.5 17.8 7.2 17 8 17C8.8 17 9.5 17.8 9.5 19C9.5 20.2 8.8 21 8 21C7.2 21 6.5 20.2 6.5 19Z"
+        fill={color}
+      />
+      {/* Right footprint */}
+      <Path
+        d="M13.5 6.5C13.5 4.8 14.5 3.5 15.5 3.5C16.5 3.5 17.5 4.8 17.5 6.5C17.5 8 16.7 9 15.5 9C14.3 9 13.5 8 13.5 6.5ZM14 12C14 10.8 14.7 10 15.5 10C16.3 10 17 10.8 17 12C17 13.2 16.3 14 15.5 14C14.7 14 14 13.2 14 12Z"
+        fill={color}
+      />
     </Svg>
   );
 }
@@ -226,6 +245,7 @@ function M3NavigationBar({
               {t.key === 'fasting' && <FastingTabIcon color={iconColor} />}
               {t.key === 'strength' && <StrengthTabIcon color={iconColor} />}
               {t.key === 'weight' && <WeightTabIcon color={iconColor} />}
+              {t.key === 'steps' && <StepsTabIcon color={iconColor} />}
               {t.key === 'coach' && (
                 <>
                   <CoachTabIcon color={iconColor} />
@@ -246,6 +266,7 @@ function M3NavigationBar({
               )}
             </View>
             <Text
+              numberOfLines={1}
               style={[
                 active ? m3Type.labelSmallEmphasized : m3Type.labelSmall,
                 {
@@ -426,6 +447,7 @@ function AskesisScreenWrapper({ navigation }: any) {
         {askesisTab === 'fasting' && <FastingScreen />}
         {askesisTab === 'strength' && <StrengthScreen />}
         {askesisTab === 'weight' && <WeightScreen />}
+        {askesisTab === 'steps' && <StepsScreen />}
         {askesisTab === 'coach' && <CoachScreen />}
       </View>
       <M3NavigationBar currentTab={askesisTab} onSelectTab={setAskesisTab} hasEvents={hasEvents} />
