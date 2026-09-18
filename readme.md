@@ -125,8 +125,8 @@ The database contains:
 * `weights` — body weight history with calendar dates.
 * `vade_mecum` — continuous personal notepad content.
 * `newsletter_settings` — The Study's persistent state and settings.
-* `coach_config` — Coach threshold settings (`steps_threshold`, `steps_days`, `fasting_days`).
-* `coach_steps` — rolling 90-day window of daily aggregated steps from Health Connect.
+* `coach_config` — Coach threshold settings (`steps_threshold`, `steps_days`, `fasting_days`, backfill/background flags).
+* `coach_steps` — two-year rolling window of daily aggregated steps from Health Connect (one-time backfill seeds up to a year).
 * `coach_events` — active unresolved Coach interventions.
 
 The database uses SQLite WAL mode.
@@ -174,7 +174,9 @@ pallas/
 ├── src/
 │   ├── askesis/
 │   │   ├── screens.tsx         # Askesis UI, lifts, fasting, weight, coach
-│   │   └── steps.tsx           # Steps sync, 30-day chart, and goal progress
+│   │   ├── steps.tsx           # Steps sync and week/month/year trend chart
+│   │   ├── stepsStore.ts       # In-memory stale-while-revalidate steps cache
+│   │   └── askesisCache.ts     # Read-through cache for all Askesis tab data
 │   │
 │   ├── coach/
 │   │   ├── backgroundTask.ts   # Health Connect sync & WorkManager rule evaluation

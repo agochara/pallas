@@ -71,21 +71,44 @@ function findMatches(text: string, query: string): Match[] {
   return matches;
 }
 
-function buildSegments(text: string, matches: Match[]): Segment[] {
-  if (matches.length === 0) {
-    return text ? [{ text, matchIndex: null }] : [];
-  }
-  const segments: Segment[] = [];
+type Paragraph = { index: number; start: number; end: number; text: string };
+
+// Split the manuscript into newline-delimited blocks while tracking each
+// block's character range, so an inline match can be mapped back to a block.
+function splitParagraphs(text: string): Paragraph[] {
+  const paragraphs: Paragraph[] = [];
+  const lines = text.split('\n');
   let cursor = 0;
-  matches.forEach((match, index) => {
-    if (match.start > cursor) {
-      segments.push({ text: text.slice(cursor, match.start), matchIndex: null });
-    }
-    segments.push({ text: text.slice(match.start, match.end), matchIndex: index });
-    cursor = match.end;
+  lines.forEach((line, index) => {
+    const start = cursor;
+    const end = start + line.length;
+    paragraphs.push({ index, start, end, text: line });
+    cursor = end + 1; // account for the removed newline
   });
-  if (cursor < text.length) {
-    segments.push({ text: text.slice(cursor), matchIndex: null });
+  return paragraphs;
+}
+
+function buildParagraphSegments(
+  content: string,
+  paragraph: Paragraph,
+  matches: { match: Match; matchIndex: number }[]
+): Segment[] {
+  const segments: Segment[] = [];
+  let cursor = paragraph.start;
+
+  matches.forEach(({ match, matchIndex }) => {
+    const start = Math.max(match.start, paragraph.start);
+    const end = Math.min(match.end, paragraph.end);
+
+    if (start > cursor) {
+      segments.push({ text: content.slice(cursor, start), matchIndex: null });
+    }
+    segments.push({ text: content.slice(start, end), matchIndex });
+    cursor = end;
+  });
+
+  if (cursor < paragraph.end) {
+    segments.push({ text: content.slice(cursor, paragraph.end), matchIndex: null });
   }
   return segments;
 }
@@ -99,11 +122,12 @@ export function VadeMecumScreen({ onBack }: { onBack: () => void }) {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
+  const [layoutTick, setLayoutTick] = useState(0);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const latestContentRef = useRef<string>('');
   const scrollRef = useRef<ScrollView | null>(null);
-  const matchLayoutsRef = useRef<Record<number, number>>({});
+  const paragraphLayoutsRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     getVadeMecum().then((saved) => {
@@ -144,12 +168,40 @@ export function VadeMecumScreen({ onBack }: { onBack: () => void }) {
   }, []);
 
   const matches = useMemo(() => findMatches(content, query), [content, query]);
-  const segments = useMemo(() => buildSegments(content, matches), [content, matches]);
 
-  // Reset the active match and measured layouts whenever the query changes.
+  const paragraphs = useMemo(() => splitParagraphs(content), [content]);
+
+  // Bucket matches into their paragraph in a single pass (both lists are
+  // ordered by position), and remember the paragraph per match for scrolling.
+  const { paragraphMatches, matchParagraph } = useMemo(() => {
+    const buckets: { match: Match; matchIndex: number }[][] = paragraphs.map(() => []);
+    const matchParagraph: number[] = new Array(matches.length).fill(0);
+    let cursor = 0;
+
+    matches.forEach((match, matchIndex) => {
+      while (
+        cursor < paragraphs.length - 1 &&
+        match.start > paragraphs[cursor].end
+      ) {
+        cursor++;
+      }
+      const paragraphIndex = paragraphs[cursor].index;
+      matchParagraph[matchIndex] = paragraphIndex;
+      buckets[paragraphIndex].push({ match, matchIndex });
+    });
+
+    return { paragraphMatches: buckets, matchParagraph };
+  }, [matches, paragraphs]);
+
+  const paragraphSegments = useMemo(
+    () => paragraphs.map((p, i) => buildParagraphSegments(content, p, paragraphMatches[i])),
+    [paragraphs, content, paragraphMatches]
+  );
+
+  // Restart match navigation whenever the query changes. Paragraph offsets are
+  // independent of the query, so they are kept and reused for scrolling.
   useEffect(() => {
     setActiveMatch(0);
-    matchLayoutsRef.current = {};
   }, [query]);
 
   // Keep the active match in range as the document or query changes.
@@ -159,18 +211,19 @@ export function VadeMecumScreen({ onBack }: { onBack: () => void }) {
     }
   }, [matches.length, activeMatch]);
 
-  // Scroll the active match into view once its layout is known.
+  // Scroll the paragraph containing the active match into view.
   useEffect(() => {
     if (!searching || matches.length === 0) return;
-    const y = matchLayoutsRef.current[activeMatch];
+    const paragraphIndex = matchParagraph[activeMatch];
+    const y = paragraphLayoutsRef.current[paragraphIndex];
     if (typeof y !== 'number') return;
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 88), animated: true });
-  }, [searching, activeMatch, matches.length, query]);
+  }, [searching, activeMatch, matches.length, query, layoutTick, matchParagraph]);
 
   const openSearch = useCallback(() => {
     setQuery('');
     setActiveMatch(0);
-    matchLayoutsRef.current = {};
+    paragraphLayoutsRef.current = {};
     setSearching(true);
   }, []);
 
@@ -329,33 +382,51 @@ export function VadeMecumScreen({ onBack }: { onBack: () => void }) {
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
-            <Text
-              style={[
-                styles.readText,
-                { color: c.text, fontFamily: garamondRegular },
-              ]}
-            >
-              {segments.map((segment, index) => {
-                if (segment.matchIndex === null) {
-                  return <Text key={index}>{segment.text}</Text>;
-                }
-                const isActive = segment.matchIndex === activeMatch;
+            <View>
+              {paragraphs.map((paragraph, pIndex) => {
+                const segments = paragraphSegments[pIndex] ?? [];
                 return (
-                  <Text
-                    key={index}
+                  <View
+                    key={pIndex}
                     onLayout={(e) => {
-                      matchLayoutsRef.current[segment.matchIndex as number] =
-                        e.nativeEvent.layout.y;
-                    }}
-                    style={{
-                      backgroundColor: isActive ? c.highlightActive : c.highlight,
+                      const y = e.nativeEvent.layout.y;
+                      if (paragraphLayoutsRef.current[pIndex] !== y) {
+                        paragraphLayoutsRef.current[pIndex] = y;
+                        setLayoutTick((t) => t + 1);
+                      }
                     }}
                   >
-                    {segment.text}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.readText,
+                        { color: c.text, fontFamily: garamondRegular },
+                      ]}
+                    >
+                      {paragraph.text.length === 0
+                        ? '\u00A0'
+                        : segments.map((segment, index) => {
+                            if (segment.matchIndex === null) {
+                              return <Text key={index}>{segment.text}</Text>;
+                            }
+                            const isActive = segment.matchIndex === activeMatch;
+                            return (
+                              <Text
+                                key={index}
+                                style={{
+                                  backgroundColor: isActive
+                                    ? c.highlightActive
+                                    : c.highlight,
+                                }}
+                              >
+                                {segment.text}
+                              </Text>
+                            );
+                          })}
+                    </Text>
+                  </View>
                 );
               })}
-            </Text>
+            </View>
           </ScrollView>
         ) : (
           <ScrollView

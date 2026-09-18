@@ -120,6 +120,8 @@ export async function initDatabase(): Promise<void> {
     INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_threshold', 7000);
     INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_days', 3);
     INSERT OR IGNORE INTO coach_config (key, value) VALUES ('fasting_days', 3);
+    INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_backfilled', 0);
+    INSERT OR IGNORE INTO coach_config (key, value) VALUES ('steps_bg_v2', 0);
 
     CREATE TABLE IF NOT EXISTS coach_steps (
       date TEXT PRIMARY KEY,
@@ -314,15 +316,6 @@ export async function getWeights(): Promise<WeightEntry[]> {
     `SELECT * FROM weights
      ORDER BY date ASC, id ASC`
   );
-}
-
-export async function getLatestWeight(): Promise<WeightEntry | null> {
-  const rows = await getDb().getAllAsync<WeightEntry>(
-    `SELECT * FROM weights
-     ORDER BY date DESC, id DESC
-     LIMIT 1`
-  );
-  return rows.length > 0 ? rows[0] : null;
 }
 
 export async function insertWeight(
@@ -698,17 +691,14 @@ export async function getCoachSteps(): Promise<CoachStep[]> {
   return await getDb().getAllAsync<CoachStep>(`SELECT * FROM coach_steps ORDER BY date ASC`);
 }
 
-export async function getPastSteps(days: number = 30): Promise<CoachStep[]> {
-  return await getDb().getAllAsync<CoachStep>(
-    `SELECT * FROM coach_steps WHERE date >= date('now', '-' || ? || ' days') ORDER BY date ASC`,
-    [days]
-  );
-}
-
 export async function updateCoachSteps(date: string, steps: number): Promise<void> {
   await getDb().runAsync(`INSERT OR REPLACE INTO coach_steps (date, steps) VALUES (?, ?)`, [date, steps]);
-  // Retain historical window for graphs and coaching
-  await getDb().runAsync(`DELETE FROM coach_steps WHERE date < date('now', '-90 days')`);
+}
+
+// Keep a rolling two-year window. This comfortably satisfies the one-year
+// history the graph needs while bounding database growth.
+export async function pruneOldSteps(): Promise<void> {
+  await getDb().runAsync(`DELETE FROM coach_steps WHERE date < date('now', '-2 years')`);
 }
 
 export async function deleteCoachStep(date: string): Promise<void> {

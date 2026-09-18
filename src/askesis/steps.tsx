@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText, G, Path, Circle } from 'react-native-svg';
 
@@ -19,12 +20,26 @@ import {
 import {
   M3Card,
   M3Pressable,
+  M3SegmentedButton,
 } from '../themes/m3-components';
+import { CoachStep } from '../database/db';
+import { syncStepsFromHealthConnect, ensureStepsBackfill } from '../coach/backgroundTask';
 import {
-  getPastSteps,
-  CoachStep,
-} from '../database/db';
-import { syncStepsFromHealthConnect } from '../coach/backgroundTask';
+  getCachedSteps,
+  hasStepsCache,
+  loadStepsFromDb,
+  stepsSignature,
+} from './stepsStore';
+
+type StepsRange = 'W' | 'M' | 'Y';
+
+const RANGE_DAYS: Record<StepsRange, number> = { W: 7, M: 30, Y: 365 };
+
+const STEP_RANGES: { key: StepsRange; label: string }[] = [
+  { key: 'W', label: 'Week' },
+  { key: 'M', label: 'Month' },
+  { key: 'Y', label: 'Year' },
+];
 
 // Helper to get local date string YYYY-MM-DD
 function toLocalIso(d: Date): string {
@@ -43,27 +58,35 @@ function formatFullDate(dateStr: string): string {
   });
 }
 
+function formatShortDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
 interface DayStepData {
   dateStr: string;
+  endDateStr: string;
   label: string;
   date: Date;
   steps: number;
   hasRecord: boolean;
   isToday: boolean;
+  isBucket: boolean;
 }
 
-// Generate the list of the past 30 days ending today
-function getPast30Days(): { dateStr: string; label: string; date: Date; isToday: boolean }[] {
+// Generate the past `n` days ending today.
+function getPastDays(n: number): { dateStr: string; label: string; date: Date; isToday: boolean }[] {
   const days = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = toLocalIso(today);
 
-  for (let i = 29; i >= 0; i--) {
+  for (let i = n - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     d.setHours(0, 0, 0, 0);
@@ -79,10 +102,51 @@ function getPast30Days(): { dateStr: string; label: string; date: Date; isToday:
   return days;
 }
 
+// Collapse daily points into roughly `target` equal buckets (used for the year
+// view so the bars stay legible). Each bucket reports its average daily steps.
+function buildBuckets(daily: DayStepData[], target: number): DayStepData[] {
+  const buckets: DayStepData[] = [];
+  const size = Math.max(1, Math.ceil(daily.length / target));
+  for (let end = daily.length - 1; end >= 0; end -= size) {
+    const start = Math.max(0, end - size + 1);
+    const slice = daily.slice(start, end + 1);
+    const recorded = slice.filter((d) => d.hasRecord);
+    const total = recorded.reduce((acc, d) => acc + d.steps, 0);
+    const average = recorded.length > 0 ? Math.round(total / recorded.length) : 0;
+    const first = slice[0];
+    const last = slice[slice.length - 1];
+
+    buckets.unshift({
+      dateStr: first.dateStr,
+      endDateStr: last.dateStr,
+      label: first.label,
+      date: first.date,
+      steps: average,
+      hasRecord: recorded.length > 0,
+      isToday: last.isToday,
+      isBucket: true,
+    });
+  }
+  return buckets;
+}
+
+// Roughly five evenly spaced x-axis labels regardless of bar count.
+function getLabelIndices(length: number): number[] {
+  if (length <= 7) {
+    return Array.from({ length }, (_, i) => i);
+  }
+  const target = 5;
+  const indices = new Set<number>();
+  for (let i = 0; i < target; i++) {
+    indices.add(Math.round((i * (length - 1)) / (target - 1)));
+  }
+  return [...indices].sort((a, b) => a - b);
+}
+
 // ---------------------------------------------------------------------------
-// 30-DAY SVG TIME-SERIES BAR CHART
+// STEP TREND SVG BAR CHART (daily or weekly buckets)
 // ---------------------------------------------------------------------------
-function Steps30DayChart({
+function StepsTrendChart({
   data,
   averageSteps,
   selectedIndex,
@@ -94,7 +158,9 @@ function Steps30DayChart({
   onSelectIndex: (index: number) => void;
 }) {
   const m3 = useM3Theme();
-  const [chartWidth, setChartWidth] = useState(330);
+  // 0 until measured: drawing at a guessed width caused the chart to overflow
+  // and visibly snap into place on first render.
+  const [chartWidth, setChartWidth] = useState(0);
 
   const chartHeight = 200;
   const padLeft = 32;
@@ -109,11 +175,8 @@ function Steps30DayChart({
   const stepMagnitude = maxStepVal > 15000 ? 5000 : 2000;
   const maxY = Math.ceil((maxStepVal * 1.12) / stepMagnitude) * stepMagnitude;
 
-  const slotWidth = drawWidth / 30;
-  const barWidth = Math.max(3.5, Math.min(8, slotWidth - 2.5));
-
-  // Average line Y coordinate
-  const avgY = maxY > 0 ? padTop + drawHeight - (averageSteps / maxY) * drawHeight : padTop + drawHeight;
+  const slotWidth = drawWidth / Math.max(1, data.length);
+  const barWidth = Math.max(2.5, Math.min(8, slotWidth - 2.5));
 
   // Ticks for Y-Axis (0, mid, max)
   const yTicks = [
@@ -122,8 +185,7 @@ function Steps30DayChart({
     { value: 0, y: padTop + drawHeight },
   ];
 
-  // X-axis label indices (e.g. day 0, 7, 14, 21, 29)
-  const xLabelIndices = [0, 7, 14, 21, 29];
+  const xLabelIndices = getLabelIndices(data.length);
 
   return (
     <View
@@ -133,7 +195,8 @@ function Steps30DayChart({
       }}
       style={{ width: '100%', height: chartHeight }}
     >
-      <Svg width={chartWidth} height={chartHeight}>
+      {chartWidth > 0 && (
+        <Svg width={chartWidth} height={chartHeight}>
         {/* Horizontal gridlines and Y-axis values */}
         {yTicks.map((tick, i) => (
           <G key={i}>
@@ -160,32 +223,7 @@ function Steps30DayChart({
           </G>
         ))}
 
-        {/* 30-Day Average Reference Line */}
-        {averageSteps > 0 && avgY >= padTop && avgY <= padTop + drawHeight && (
-          <G>
-            <Line
-              x1={padLeft}
-              y1={avgY}
-              x2={chartWidth - padRight}
-              y2={avgY}
-              stroke={m3.tertiary}
-              strokeDasharray="4,4"
-              strokeWidth={1.8}
-            />
-            <SvgText
-              x={chartWidth - padRight - 2}
-              y={avgY - 4}
-              fill={m3.tertiary}
-              fontSize="9"
-              fontWeight="700"
-              textAnchor="end"
-            >
-              AVG {averageSteps >= 1000 ? `${(averageSteps / 1000).toFixed(1)}k` : averageSteps}
-            </SvgText>
-          </G>
-        )}
-
-        {/* 30 Daily Step Bars */}
+        {/* Daily / weekly step bars */}
         {data.map((item, index) => {
           const isSelected = selectedIndex === index;
           const barHeight = maxY > 0 ? (item.steps / maxY) * drawHeight : 0;
@@ -269,7 +307,8 @@ function Steps30DayChart({
             </SvgText>
           );
         })}
-      </Svg>
+        </Svg>
+      )}
 
       {/* Invisible Touch Layer for Bar Selection */}
       <View
@@ -301,32 +340,53 @@ function Steps30DayChart({
 // ---------------------------------------------------------------------------
 export function StepsScreen() {
   const m3 = useM3Theme();
-  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number>(29); // Default to today (index 29)
+  const [range, setRange] = useState<StepsRange>('M');
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>(() => getCachedSteps() ?? []);
+  const [loading, setLoading] = useState<boolean>(() => !hasStepsCache());
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1); // -1 = latest
   const [syncing, setSyncing] = useState(false);
 
-  // Load steps from SQLite
-  const loadData = useCallback(async () => {
-    try {
-      const list = await getPastSteps(30);
-      setCoachSteps(list);
-    } catch (e) {
-      console.error('Error loading coach steps:', e);
-    }
+  // Merge a fresh list into state without re-rendering when it is unchanged.
+  const applyList = useCallback((list: CoachStep[]) => {
+    setCoachSteps((prev) => (stepsSignature(prev) === stepsSignature(list) ? prev : list));
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // Revalidate the cache from SQLite (stale-while-revalidate).
+  const revalidate = useCallback(async () => {
+    try {
+      const list = await loadStepsFromDb();
+      applyList(list);
+    } catch (e) {
+      console.error('Error loading coach steps:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyList]);
 
-  // Sync from Health Connect on mount or user request
+  useEffect(() => {
+    revalidate();
+  }, [revalidate]);
+
+  // Background syncs land in SQLite while the app is paused; revalidate when
+  // the user returns so the graph reflects them.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') revalidate();
+    });
+    return () => sub.remove();
+  }, [revalidate]);
+
+  // Sync from Health Connect on user request
   const handleSync = useCallback(async () => {
     if (syncing) return;
     setSyncing(true);
     try {
       const res = await syncStepsFromHealthConnect(30);
       if (res.success) {
-        await loadData();
+        // If this is the first time we have permission, seed the year of
+        // history so the wider ranges are populated.
+        await ensureStepsBackfill();
+        await revalidate();
       } else if (res.hasPermission) {
         Alert.alert(
           'Health Connect Error',
@@ -345,69 +405,82 @@ export function StepsScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, loadData]);
+  }, [syncing, revalidate]);
 
-  // Generate 30 days dataset mapped to database records
-  const past30Days = useMemo(() => getPast30Days(), []);
+  // Calendar days for the selected range.
+  const days = useMemo(() => getPastDays(RANGE_DAYS[range]), [range]);
 
-  const dataPoints: DayStepData[] = useMemo(() => {
-    const stepMap = new Map<string, number>();
-    coachSteps.forEach((s) => stepMap.set(s.date, s.steps));
+  const stepMap = useMemo(() => {
+    const map = new Map<string, number>();
+    coachSteps.forEach((s) => map.set(s.date, s.steps));
+    return map;
+  }, [coachSteps]);
 
-    return past30Days.map((d) => ({
-      dateStr: d.dateStr,
-      label: d.label,
-      date: d.date,
-      steps: stepMap.get(d.dateStr) ?? 0,
-      hasRecord: stepMap.has(d.dateStr),
-      isToday: d.isToday,
-    }));
-  }, [past30Days, coachSteps]);
+  const dailyPoints: DayStepData[] = useMemo(
+    () =>
+      days.map((d) => ({
+        dateStr: d.dateStr,
+        endDateStr: d.dateStr,
+        label: d.label,
+        date: d.date,
+        steps: stepMap.get(d.dateStr) ?? 0,
+        hasRecord: stepMap.has(d.dateStr),
+        isToday: d.isToday,
+        isBucket: false,
+      })),
+    [days, stepMap]
+  );
 
-  // 1. Total steps in past 30 days
-  const totalSteps = useMemo(() => {
-    return dataPoints.reduce((acc, curr) => acc + curr.steps, 0);
-  }, [dataPoints]);
+  // Year view is bucketed into ~24 bars; week/month render every day.
+  const chartPoints: DayStepData[] = useMemo(
+    () => (range === 'Y' ? buildBuckets(dailyPoints, 24) : dailyPoints),
+    [range, dailyPoints]
+  );
 
-  // 2. Average steps walked in the past 30 days:
-  // When recorded history is shorter than 30 days, divisor scales to recorded days for an honest daily rate.
+  const lastIndex = Math.max(0, chartPoints.length - 1);
+  const activeIndex = selectedIndex < 0 ? lastIndex : Math.min(selectedIndex, lastIndex);
+  const selectedDay = chartPoints[activeIndex];
+
+  // Stats are always computed from daily data, even when the chart is bucketed.
+  const totalSteps = useMemo(
+    () => dailyPoints.reduce((acc, curr) => acc + curr.steps, 0),
+    [dailyPoints]
+  );
+
   const averageSteps = useMemo(() => {
-    const recordedDays = dataPoints.filter((d) => d.hasRecord);
-    const divisor = recordedDays.length > 0 ? recordedDays.length : 30;
-    return Math.round(totalSteps / divisor);
-  }, [dataPoints, totalSteps]);
+    const recorded = dailyPoints.filter((d) => d.hasRecord);
+    if (recorded.length === 0) return 0;
+    return Math.round(recorded.reduce((acc, d) => acc + d.steps, 0) / recorded.length);
+  }, [dailyPoints]);
 
-  // 3. Today's steps
   const todaySteps = useMemo(() => {
-    const today = dataPoints.find((d) => d.isToday);
+    const today = dailyPoints.find((d) => d.isToday);
     return today ? today.steps : 0;
-  }, [dataPoints]);
+  }, [dailyPoints]);
 
-  // 4. Best day in the 30-day window
   const bestDay = useMemo(() => {
     let max = 0;
-    let bestDate = '';
-    dataPoints.forEach((d) => {
+    let bestLabel = '';
+    dailyPoints.forEach((d) => {
       if (d.steps > max) {
         max = d.steps;
-        bestDate = d.label;
+        bestLabel = d.label;
       }
     });
-    return { steps: max, label: bestDate };
-  }, [dataPoints]);
+    return { steps: max, label: bestLabel };
+  }, [dailyPoints]);
 
-  // Selected Day Details
-  const selectedDay = dataPoints[selectedIndex] ?? dataPoints[29];
-  const diffFromAvg = selectedDay ? selectedDay.steps - averageSteps : 0;
-  const pctFromAvg = averageSteps > 0 ? Math.round((diffFromAvg / averageSteps) * 100) : 0;
-
-  // Date range label
   const rangeLabel = useMemo(() => {
-    if (dataPoints.length === 0) return '';
-    const first = dataPoints[0].label;
-    const last = dataPoints[dataPoints.length - 1].label;
+    if (dailyPoints.length === 0) return '';
+    const first = dailyPoints[0].label;
+    const last = dailyPoints[dailyPoints.length - 1].label;
     return `${first} – ${last}`;
-  }, [dataPoints]);
+  }, [dailyPoints]);
+
+  const totalLabel =
+    range === 'W' ? '7-Day Total' : range === 'M' ? '30-Day Total' : 'Year Total';
+
+  const showInitialLoading = loading && coachSteps.length === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: m3.surface }}>
@@ -445,34 +518,29 @@ export function StepsScreen() {
         </View>
 
         {/* ------------------------------------------------------------------ */}
-        {/* TOP HERO CARD: DAILY AVERAGE & PAST 30 DAYS STATS */}
+        {/* TOP HERO CARD: DAILY AVERAGE & RANGE STATS */}
         {/* ------------------------------------------------------------------ */}
         <M3Card shape="extraLarge" style={{ marginBottom: 24 }}>
+          {/* Range Selector */}
+          <M3SegmentedButton
+            options={STEP_RANGES}
+            selected={range}
+            onSelect={(r) => {
+              setRange(r);
+              setSelectedIndex(-1);
+            }}
+            style={{ marginBottom: 16 }}
+          />
+
           {/* Average Header */}
           <View style={{ marginBottom: 14 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>
-                Daily Average (Past 30 Days)
-              </Text>
-              <View
-                style={[
-                  styles.badgePill,
-                  { backgroundColor: m3.surfaceContainerHighest, borderRadius: m3Shape.full },
-                ]}
-              >
-                <Text style={[m3Type.labelSmallEmphasized, { color: m3.onSurfaceVariant }]}>
-                  {rangeLabel}
-                </Text>
-              </View>
-            </View>
-
             {/* Hero Number Display */}
             <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
               <Text style={[m3Type.displaySmallEmphasized, { color: m3.onSurface }]}>
-                {formatNumber(averageSteps)}
+                {formatNumber(todaySteps)}
               </Text>
               <Text style={[m3Type.titleMedium, { color: m3.onSurfaceVariant, marginLeft: 8 }]}>
-                steps / day
+                steps
               </Text>
             </View>
           </View>
@@ -484,19 +552,19 @@ export function StepsScreen() {
               { backgroundColor: m3.surfaceContainerLow, borderRadius: m3Shape.large },
             ]}
           >
-            {/* Today */}
+            {/* Average */}
             <View style={styles.metricCol}>
-              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>Today</Text>
+              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>Average</Text>
               <Text style={[m3Type.titleMediumEmphasized, { color: m3.primary }]}>
-                {formatNumber(todaySteps)}
+                {formatNumber(averageSteps)}
               </Text>
             </View>
 
             <View style={[styles.metricDivider, { backgroundColor: m3.outlineVariant }]} />
 
-            {/* 30-Day Total */}
+            {/* Range Total */}
             <View style={styles.metricCol}>
-              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>30-Day Total</Text>
+              <Text style={[m3Type.labelSmall, { color: m3.onSurfaceVariant }]}>{totalLabel}</Text>
               <Text style={[m3Type.titleMediumEmphasized, { color: m3.onSurface }]}>
                 {formatNumber(totalSteps)}
               </Text>
@@ -519,24 +587,39 @@ export function StepsScreen() {
           </View>
 
           {/* ---------------------------------------------------------------- */}
-          {/* 30-DAY STEP GRAPH */}
+          {/* STEP GRAPH */}
           {/* ---------------------------------------------------------------- */}
           <View style={{ marginTop: 18 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Text style={[m3Type.titleSmallEmphasized, { color: m3.onSurface }]}>
-                Daily Steps Trend
+                Daily Steps
               </Text>
               <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant }]}>
-                Tap bar to inspect
+                {range === 'Y' ? 'Tap bar to inspect' : 'Tap bar to inspect'}
               </Text>
             </View>
 
-            <Steps30DayChart
-              data={dataPoints}
-              averageSteps={averageSteps}
-              selectedIndex={selectedIndex}
-              onSelectIndex={setSelectedIndex}
-            />
+            {showInitialLoading ? (
+              <View style={{ height: 200, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="small" color={m3.primary} />
+              </View>
+            ) : (
+              <StepsTrendChart
+                data={chartPoints}
+                averageSteps={averageSteps}
+                selectedIndex={activeIndex}
+                onSelectIndex={setSelectedIndex}
+              />
+            )}
+
+            <Text
+              style={[
+                m3Type.labelSmall,
+                { color: m3.onSurfaceVariant, textAlign: 'center', marginTop: 2 },
+              ]}
+            >
+              {rangeLabel}
+            </Text>
           </View>
 
           {/* Selected Day Inspection Footer */}
@@ -552,7 +635,10 @@ export function StepsScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={[m3Type.labelMedium, { color: m3.onSurfaceVariant }]}>
-                  {formatFullDate(selectedDay.dateStr)} {selectedDay.isToday ? '· Today' : ''}
+                  {selectedDay.isBucket
+                    ? `Week of ${formatShortDate(selectedDay.dateStr)} – ${formatShortDate(selectedDay.endDateStr)}`
+                    : formatFullDate(selectedDay.dateStr)}{' '}
+                  {selectedDay.isToday ? '· Today' : ''}
                 </Text>
                 {selectedDay.hasRecord ? (
                   <>
@@ -561,24 +647,9 @@ export function StepsScreen() {
                         {formatNumber(selectedDay.steps)}
                       </Text>
                       <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginLeft: 6 }]}>
-                        steps
+                        {selectedDay.isBucket ? 'avg steps/day' : 'steps'}
                       </Text>
                     </View>
-                    {averageSteps > 0 && selectedDay.steps > 0 && (
-                      <Text
-                        style={[
-                          m3Type.labelSmallEmphasized,
-                          {
-                            color: diffFromAvg >= 0 ? m3.primary : m3.error,
-                            marginTop: 2,
-                          },
-                        ]}
-                      >
-                        {diffFromAvg >= 0 ? '+' : ''}
-                        {formatNumber(diffFromAvg)} ({diffFromAvg >= 0 ? '+' : ''}
-                        {pctFromAvg}%) vs 30-day avg
-                      </Text>
-                    )}
                   </>
                 ) : (
                   <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 4 }]}>

@@ -62,10 +62,10 @@ const IMG_STUDY = require('../assets/ts.png');
 const IMG_VADE_MECUM = require('../assets/vm.png');
 
 const ASKESIS_TABS: { key: AskesisTab; label: string }[] = [
+  { key: 'steps', label: 'Steps' },
   { key: 'fasting', label: 'Fasting' },
   { key: 'strength', label: 'Strength' },
   { key: 'weight', label: 'Weight' },
-  { key: 'steps', label: 'Steps' },
   { key: 'coach', label: 'Coach' },
 ];
 
@@ -419,7 +419,7 @@ function SettingsScreenWrapper({ navigation }: any) {
 
 function AskesisScreenWrapper({ navigation }: any) {
   const m3 = useM3Theme();
-  const [askesisTab, setAskesisTab] = useState<AskesisTab>('fasting');
+  const [askesisTab, setAskesisTab] = useState<AskesisTab>('steps');
   const [hasEvents, setHasEvents] = useState(false);
 
   useEffect(() => {
@@ -468,15 +468,23 @@ function AppRoot() {
   });
 
   useEffect(() => {
-    initDatabase().then(() => {
+    initDatabase().then(async () => {
       setReady(true);
+
+      // Warm the Askesis caches so switching tabs (and the first Steps render)
+      // paints complete content instead of flashing empty state.
+      import('./askesis/stepsStore').then((m) => m.loadStepsFromDb());
+      import('./askesis/askesisCache').then((m) => m.warmAskesisCache());
+
       import('./coach/backgroundTask').then(async (m) => {
         m.registerCoachBackgroundTask();
         const { getCoachSteps } = await import('./database/db');
         const steps = await getCoachSteps();
         if (steps.length === 0) {
-          m.executeCoachSync();
+          await m.executeCoachSync();
         }
+        // Backfill a year of history once so every graph range is meaningful.
+        await m.ensureStepsBackfill();
       });
     });
   }, []);

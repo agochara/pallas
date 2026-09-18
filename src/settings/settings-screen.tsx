@@ -341,7 +341,7 @@ function SqlInfoModal({
             coach_steps
           </Text>
           <Text style={[m3Type.bodySmall, { color: m3.onSurfaceVariant, marginTop: 2 }]}>
-            Rolling 90-day window of daily aggregated steps from Health Connect.
+            Two-year rolling window of daily aggregated steps from Health Connect (one-time backfill seeds up to a year).
           </Text>
           <View style={{ marginTop: 6 }}>
             <Text style={[m3Type.bodySmall, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: m3.onSurface }]}>

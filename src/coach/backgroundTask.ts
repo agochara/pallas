@@ -1,17 +1,29 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
-import { initialize, getGrantedPermissions, aggregateRecord } from 'react-native-health-connect';
+import {
+  initialize,
+  getGrantedPermissions,
+  aggregateRecord,
+  aggregateGroupByDuration,
+} from 'react-native-health-connect';
 import {
   getCoachConfig,
   getCoachSteps,
   updateCoachSteps,
+  pruneOldSteps,
+  saveCoachConfig,
   addCoachEvent,
   resolveCoachEvent,
   getFastHistory,
   getActiveFast
 } from '../database/db';
+import { loadStepsFromDb } from '../askesis/stepsStore';
 
 const COACH_BACKGROUND_TASK = 'COACH_BACKGROUND_TASK';
+
+// How far back a one-time backfill reaches. Retention keeps two years, so a
+// full year gives every graph range (week/month/year) meaningful history.
+const BACKFILL_DAYS = 365;
 
 // Helper to get local date string YYYY-MM-DD
 const toLocalIso = (d: Date) => {
@@ -65,6 +77,7 @@ export async function syncStepsFromHealthConnect(days: number = 30): Promise<{
       updated++;
     }
 
+    await pruneOldSteps();
     return { success: true, updatedCount: updated, hasPermission: true };
   } catch (err: any) {
     return {
@@ -73,6 +86,88 @@ export async function syncStepsFromHealthConnect(days: number = 30): Promise<{
       hasPermission: false,
       error: err?.message || String(err),
     };
+  }
+}
+
+// Fetch up to a year of daily step totals in a single Health Connect call.
+// Health Connect buckets the range into one-day groups, which is far cheaper
+// than querying day-by-day (365 native round-trips).
+export async function backfillStepsFromHealthConnect(targetDays: number = BACKFILL_DAYS): Promise<{
+  success: boolean;
+  updatedCount: number;
+  hasPermission: boolean;
+  error?: string;
+}> {
+  try {
+    const isInitialized = await initialize();
+    if (!isInitialized) {
+      return { success: false, updatedCount: 0, hasPermission: false, error: 'Health Connect failed to initialize' };
+    }
+
+    const granted = await getGrantedPermissions();
+    const hasReadSteps = granted.some((p) => p.recordType === 'Steps' && p.accessType === 'read');
+    if (!hasReadSteps) {
+      return { success: false, updatedCount: 0, hasPermission: false, error: 'Steps read permission not granted' };
+    }
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (targetDays - 1));
+
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() + 1);
+
+    const groups = await aggregateGroupByDuration({
+      recordType: 'Steps',
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+      },
+      timeRangeSlicer: { duration: 'DAYS', length: 1 },
+    });
+
+    let updated = 0;
+    for (const group of groups) {
+      const bucketStart = new Date(group.startTime);
+      if (Number.isNaN(bucketStart.getTime())) continue;
+
+      let totalSteps = Number(group.result?.COUNT_TOTAL);
+      if (!Number.isFinite(totalSteps) || totalSteps < 0) {
+        totalSteps = 0;
+      }
+
+      await updateCoachSteps(toLocalIso(bucketStart), totalSteps);
+      updated++;
+    }
+
+    await pruneOldSteps();
+    return { success: true, updatedCount: updated, hasPermission: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      updatedCount: 0,
+      hasPermission: false,
+      error: err?.message || String(err),
+    };
+  }
+}
+
+// Runs the year-long backfill once, then refreshes the in-memory cache. Safe to
+// call on every boot; the `steps_backfilled` config flag gates the work.
+export async function ensureStepsBackfill(): Promise<void> {
+  try {
+    const config = await getCoachConfig();
+    if (config.steps_backfilled === 1) return;
+
+    const result = await backfillStepsFromHealthConnect(BACKFILL_DAYS);
+    if (!result.success) return;
+
+    await saveCoachConfig({ steps_backfilled: 1 });
+    await loadStepsFromDb();
+  } catch (err) {
+    console.warn('Steps backfill failed:', err);
   }
 }
 
@@ -118,15 +213,17 @@ export async function executeCoachSync() {
 
     // 2. STEPS RULE
     try {
-      const syncResult = await syncStepsFromHealthConnect(30);
+      // Fetch config first so the sync window always covers the days the rule
+      // inspects (today plus the last `stepDays`).
+      const config = await getCoachConfig();
+      const stepThreshold = config.steps_threshold ?? 7000;
+      const stepDays = config.steps_days ?? 3;
+
+      const syncResult = await syncStepsFromHealthConnect(Math.max(stepDays + 1, 3));
 
       if (!syncResult.hasPermission && syncResult.error === 'Steps read permission not granted') {
         await resolveCoachEvent('insufficient_steps');
       } else if (syncResult.success) {
-        // Fetch config for steps separately to ensure rule independence
-        const config = await getCoachConfig();
-        const stepThreshold = config.steps_threshold ?? 7000;
-        const stepDays = config.steps_days ?? 3;
 
         const history = await getCoachSteps();
 
@@ -180,10 +277,27 @@ TaskManager.defineTask(COACH_BACKGROUND_TASK, async () => {
 });
 
 export async function registerCoachBackgroundTask() {
-  const isRegistered = await TaskManager.isTaskRegisteredAsync(COACH_BACKGROUND_TASK);
-  if (!isRegistered) {
-    await BackgroundTask.registerTaskAsync(COACH_BACKGROUND_TASK, {
-      minimumInterval: 180, // explicitly in minutes per expo-background-task definitions
-    });
+  try {
+    const config = await getCoachConfig();
+    // One-time migration: older installs registered at a 180 minute interval.
+    // Re-register once to move them to the hourly cadence, then leave the
+    // schedule alone so boots don't keep resetting the OS timer.
+    const needsMigration = config.steps_bg_v2 !== 1;
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(COACH_BACKGROUND_TASK);
+
+    if (isRegistered && needsMigration) {
+      await BackgroundTask.unregisterTaskAsync(COACH_BACKGROUND_TASK);
+    }
+    if (!isRegistered || needsMigration) {
+      await BackgroundTask.registerTaskAsync(COACH_BACKGROUND_TASK, {
+        // Inexact: the OS treats this as a minimum and may run less often.
+        minimumInterval: 60,
+      });
+    }
+    if (needsMigration) {
+      await saveCoachConfig({ steps_bg_v2: 1 });
+    }
+  } catch (err) {
+    console.warn('Failed to register coach background task:', err);
   }
 }

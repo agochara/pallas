@@ -77,7 +77,6 @@ import {
   getExercises,
   addCustomExercise,
   deleteCustomExercise,
-  getAllMaxLifts,
   getActiveFast,
   startFast,
   endFast,
@@ -87,11 +86,16 @@ import {
   getFastHistory,
   getMaxLift,
   getWeights,
-  getLatestWeight,
   insertWeight,
   updateWeight,
   deleteWeight,
 } from '../database/db';
+import {
+  ASKESIS_KEYS,
+  getCached,
+  loadCached,
+  loadMaxLiftMap,
+} from './askesisCache';
 
 import { useM3Theme, m3Shape, m3Type, motionSprings, M3Theme } from '../themes/theme';
 import {
@@ -515,7 +519,9 @@ function WeightTimeSeriesChart({
   onSelectEntry: (entry: WeightEntry) => void;
 }) {
   const m3 = useM3Theme();
-  const [chartWidth, setChartWidth] = useState(320);
+  // 0 until measured: drawing at a guessed width caused the chart to overflow
+  // and visibly snap into place on first render.
+  const [chartWidth, setChartWidth] = useState(0);
 
   const chartHeight = 180;
   const padLeft = 14;
@@ -590,7 +596,8 @@ function WeightTimeSeriesChart({
       }}
       style={{ width: '100%', height: chartHeight }}
     >
-      <Svg width={chartWidth} height={chartHeight}>
+      {chartWidth > 0 && (
+        <Svg width={chartWidth} height={chartHeight}>
         {yTicks.map((tick, i) => (
           <G key={i}>
             <Line
@@ -657,7 +664,8 @@ function WeightTimeSeriesChart({
             </SvgText>
           );
         })}
-      </Svg>
+        </Svg>
+      )}
     </View>
   );
 }
@@ -911,8 +919,13 @@ function WeightHistoryModal({
 
 export function WeightScreen() {
   const m3 = useM3Theme();
-  const [weights, setWeights] = useState<WeightEntry[]>([]);
-  const [latestGlobalWeight, setLatestGlobalWeight] = useState<WeightEntry | null>(null);
+  const [weights, setWeights] = useState<WeightEntry[]>(
+    () => getCached<WeightEntry[]>(ASKESIS_KEYS.weights) ?? []
+  );
+  const [latestGlobalWeight, setLatestGlobalWeight] = useState<WeightEntry | null>(() => {
+    const cached = getCached<WeightEntry[]>(ASKESIS_KEYS.weights);
+    return cached && cached.length > 0 ? cached[cached.length - 1] : null;
+  });
   const [timeRange, setTimeRange] = useState<TimeRange>('Y');
   const [rangeOffset, setRangeOffset] = useState<number>(0);
   const [showAdd, setShowAdd] = useState(false);
@@ -920,9 +933,10 @@ export function WeightScreen() {
   const [editing, setEditing] = useState<WeightEntry | null>(null);
 
   const load = useCallback(async () => {
-    const list = await getWeights();
+    const list = await loadCached(ASKESIS_KEYS.weights, getWeights);
     setWeights(list);
-    setLatestGlobalWeight(await getLatestWeight());
+    // getWeights() is ordered date ASC, so the last entry is the latest.
+    setLatestGlobalWeight(list.length > 0 ? list[list.length - 1] : null);
   }, []);
 
   useEffect(() => {
@@ -1329,20 +1343,20 @@ function EditLiftModal({
 
 export function StrengthScreen() {
   const m3 = useM3Theme();
-  const [exercises, setExercises] = useState<ExerciseItem[]>([]);
-  const [maxLifts, setMaxLifts] = useState<Record<string, LiftRecord | null>>({});
+  const [exercises, setExercises] = useState<ExerciseItem[]>(
+    () => getCached<ExerciseItem[]>(ASKESIS_KEYS.exercises) ?? []
+  );
+  const [maxLifts, setMaxLifts] = useState<Record<string, LiftRecord | null>>(
+    () => getCached<Record<string, LiftRecord>>(ASKESIS_KEYS.maxLiftMap) ?? {}
+  );
   const [editingExercise, setEditingExercise] = useState<ExerciseItem | null>(null);
   const [showAddExercise, setShowAddExercise] = useState(false);
 
   const load = useCallback(async () => {
-    const list = await getExercises();
+    const list = await loadCached(ASKESIS_KEYS.exercises, getExercises);
     setExercises(list);
-    const lifts = await getAllMaxLifts();
-    const liftMap: Record<string, LiftRecord> = {};
-    lifts.forEach((l) => {
-      liftMap[l.exercise] = l;
-    });
-    setMaxLifts(liftMap);
+    const lifts = await loadCached(ASKESIS_KEYS.maxLiftMap, loadMaxLiftMap);
+    setMaxLifts(lifts);
   }, []);
 
   useEffect(() => {
@@ -1880,8 +1894,12 @@ function EditFastModal({
 export function FastingScreen() {
   const m3 = useM3Theme();
 
-  const [activeFast, setActiveFastState] = useState<Fast | null>(null);
-  const [history, setHistory] = useState<Fast[]>([]);
+  const [activeFast, setActiveFastState] = useState<Fast | null>(
+    () => getCached<Fast | null>(ASKESIS_KEYS.activeFast) ?? null
+  );
+  const [history, setHistory] = useState<Fast[]>(
+    () => getCached<Fast[]>(ASKESIS_KEYS.fastHistory) ?? []
+  );
   const [now, setNow] = useState(Date.now());
   const [editing, setEditing] = useState<Fast | null>(null);
   const [showStartFast, setShowStartFast] = useState(false);
@@ -1889,8 +1907,8 @@ export function FastingScreen() {
   const [showEndFast, setShowEndFast] = useState(false);
 
   const load = useCallback(async () => {
-    setActiveFastState(await getActiveFast());
-    setHistory(await getFastHistory());
+    setActiveFastState(await loadCached(ASKESIS_KEYS.activeFast, getActiveFast));
+    setHistory(await loadCached(ASKESIS_KEYS.fastHistory, getFastHistory));
   }, []);
 
   useEffect(() => {
@@ -2304,13 +2322,14 @@ function SearchWidget({ payload }: { payload: any }) {
 
 export function CoachScreen() {
   const m3 = useM3Theme();
-  const [events, setEvents] = useState<CoachEvent[]>([]);
+  const [events, setEvents] = useState<CoachEvent[]>(
+    () => getCached<CoachEvent[]>(ASKESIS_KEYS.coachEvents) ?? []
+  );
   const [ephemeral, setEphemeral] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
 
   const loadEvents = useCallback(async () => {
-    const evs = await getCoachEvents();
-    setEvents(evs);
+    setEvents(await loadCached(ASKESIS_KEYS.coachEvents, getCoachEvents));
   }, []);
 
   useEffect(() => {
@@ -2347,6 +2366,8 @@ export function CoachScreen() {
       createdAt: Date.now() + 1,
     };
     setEphemeral(prev => [...prev, response]);
+    // Commands like /synchc can add or resolve coach events.
+    await loadEvents();
   };
 
   const getEventText = (type: string) => {
