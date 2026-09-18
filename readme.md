@@ -255,6 +255,15 @@ Build an Android APK through EAS:
 eas build -p android --profile preview
 ```
 Can also be run through gradle.
+Complete pre-builds.
+```bash
+npx expo prebuild
+```
+Make `gradlew` an executable, and
+```bash
+./gradlew assembleRelease
+```
+The signing keys will have to be arranged from EAS and entered into gradlew. 
 
 ## Philosophy
 
