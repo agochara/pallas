@@ -1,3 +1,4 @@
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -19,17 +20,46 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = providers.gradleProperty("PALLAS_KEYSTORE").orNull
+            val alias = providers.gradleProperty("PALLAS_KEY_ALIAS").orNull
+            val storePass = providers.gradleProperty("PALLAS_STORE_PASSWORD").orNull
+            val keyPass = providers.gradleProperty("PALLAS_KEY_PASSWORD").orNull
+
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+            }
+            if (alias != null) {
+                keyAlias = alias
+            }
+            if (storePass != null) {
+                storePassword = storePass
+            }
+            if (keyPass != null) {
+                keyPassword = keyPass
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Uses Android's default debug signing key.
+        }
+
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     buildFeatures {
         compose = true
     }

@@ -17,3 +17,4 @@ local.properties
 # Android Studio files
 .idea/
 /mise.toml
+/.env
